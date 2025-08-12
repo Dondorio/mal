@@ -1,7 +1,5 @@
-extern crate rustyline;
-
-use rustyline::error::ReadlineError;
 use rustyline::Editor;
+use rustyline::error::ReadlineError;
 
 fn main() {
     // `()` can be used when no completer is required
@@ -17,13 +15,13 @@ fn main() {
                 let _ = rl.add_history_entry(&line);
                 rl.save_history(".mal-history").unwrap();
                 if !line.is_empty() {
-                    println!("{}", line);
+                    println!("{line}");
                 }
             }
             Err(ReadlineError::Interrupted) => continue,
             Err(ReadlineError::Eof) => break,
             Err(err) => {
-                println!("Error: {:?}", err);
+                println!("Error: {err:?}");
                 break;
             }
         }

@@ -1,234 +1,204 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-//use std::collections::HashMap;
-use fnv::FnvHashMap;
+use crate::env::*;
 use itertools::Itertools;
+use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
 
-use crate::env::{env_bind, Env};
-use crate::types::MalErr::{ErrMalVal, ErrString};
-use crate::types::MalVal::{Atom, Bool, Func, Hash, Int, List, MalFunc, Nil, Str, Sym, Vector};
+#[macro_export]
+macro_rules! mal_err {
+    ($($arg:tt)*) => {
+        Err(MalErr::String(format!($($arg)*)))
+    };
+}
 
-#[derive(Clone)]
-pub enum MalVal {
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub enum MalType {
     Nil,
-    Bool(bool),
     Int(i64),
-    //Float(f64),
+    Symbol(String),
     Str(String),
-    Sym(String),
-    List(Rc<Vec<MalVal>>, Rc<MalVal>),
-    Vector(Rc<Vec<MalVal>>, Rc<MalVal>),
-    Hash(Rc<FnvHashMap<String, MalVal>>, Rc<MalVal>),
-    Func(fn(MalArgs) -> MalRet, Rc<MalVal>),
-    MalFunc {
-        eval: fn(ast: &MalVal, env: &Env) -> MalRet,
-        ast: Rc<MalVal>,
-        env: Env,
-        params: Rc<MalVal>,
-        is_macro: bool,
-        meta: Rc<MalVal>,
-    },
-    Atom(Rc<RefCell<MalVal>>),
+    Bool(bool),
+    List(Vec<MalType>),
+    Vec(Vec<MalType>),
+    HashMap(HashMap<String, MalType>),
+    Keyword(String),
+    Func(fn(Vec<MalType>) -> MalRet),
 }
 
+#[allow(dead_code)]
+impl MalType {
+    pub fn eval(&self, env: &Rc<RefCell<MalEnv>>) -> MalRet {
+        match self {
+            Self::List(l) => {
+                if l.is_empty() {
+                    return Ok(Self::List(Vec::new()));
+                }
+
+                let set_env_from_vec =
+                    |l: (&MalType, &MalType), env: &Rc<RefCell<MalEnv>>| -> MalRet {
+                        match l.0 {
+                            Self::Symbol(key) => {
+                                let val = l.1.eval(env)?;
+                                env.borrow_mut().set(key.to_string(), val.clone());
+                                Ok(val)
+                            }
+                            _ => mal_err!("expected symbol, found {}", l.0),
+                        }
+                    };
+
+                match &l[0] {
+                    Self::Symbol(sym) => {
+                        match sym.as_str() {
+                            "def!" => return set_env_from_vec((&l[1], &l[2]), env),
+                            "let*" => {
+                                if l.len() != 3 {
+                                    return mal_err!(
+                                        "let* failed: expected 2 elements, found no1 {}",
+                                        l.len() - 1
+                                    );
+                                }
+
+                                return match &l[1] {
+                                    Self::List(l1) | Self::Vec(l1) => {
+                                        let new_env =
+                                            &Rc::new(RefCell::new(env.borrow().new_into_outer()));
+
+                                        if l1.len() % 2 != 0 {
+                                            return mal_err!(
+                                                "let* failed: expected symbol type pairs"
+                                            );
+                                        }
+
+                                        for i in l1.iter().tuples::<(_, _)>() {
+                                            set_env_from_vec(i, new_env).map_err(|e| {
+                                                MalErr::String(format!("let* failed: {e}"))
+                                            })?;
+                                        }
+
+                                        l[2].eval(new_env)
+                                    }
+                                    _ => {
+                                        mal_err!(
+                                            "expected first argument to be list, found {} ",
+                                            l[1]
+                                        )
+                                    }
+                                };
+                            }
+                            _ => {}
+                        }
+                        match env.borrow().get(sym) {
+                            Some(env_match) => {
+                                let args = l[1..].iter().map(|i| i.eval(env)).collect::<Result<
+                                    Vec<MalType>,
+                                    MalErr,
+                                >>(
+                                )?;
+
+                                match env_match {
+                                    Self::Func(f) => f(args),
+                                    _ => env_match.eval(env),
+                                }
+                            }
+                            None => mal_err!("'{sym}' not found"),
+                        }
+                    }
+                    _ => mal_err!("expected symbol, found: {}", l[0]),
+                }
+            }
+            Self::Vec(v) => {
+                Ok(Self::Vec(v.iter().map(|e| e.eval(env)).collect::<Result<
+                    Vec<Self>,
+                    MalErr,
+                >>(
+                )?))
+            }
+            Self::HashMap(h) => Ok(Self::HashMap(
+                h.iter()
+                    .map(|(k, v)| Ok((k.clone(), v.eval(env)?)))
+                    .collect::<Result<HashMap<String, MalType>, MalErr>>()?,
+            )),
+            Self::Symbol(s) => match env.borrow().get(s.as_str()) {
+                Some(Self::Func(..)) => Ok(self.clone()),
+                Some(e) => Ok(e.clone()),
+                None => Ok(self.clone()),
+            },
+            _ => Ok(self.clone()),
+        }
+    }
+}
+
+impl Display for MalType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MalType::Nil => write!(f, "Nil"),
+            MalType::Int(i) => write!(f, "{i}",),
+            MalType::Symbol(s) => write!(f, "{s}"),
+            MalType::Str(s) => {
+                if let Some(p) = s.strip_prefix('\u{29e}') {
+                    write!(f, ":{p}")
+                } else {
+                    write!(f, "\"{s}\"")
+                }
+            }
+            MalType::Bool(b) => write!(f, "{b}"),
+            MalType::List(l) => {
+                write!(f, "({})", join_list(l, " "))
+            }
+            MalType::Vec(v) => {
+                write!(f, "[{}]", join_list(v, " "))
+            }
+            MalType::HashMap(h) => {
+                let s = h.iter().map(|(key, val)| format!("{key} {val}")).join(" ");
+                write!(f, "{{{s}}}")
+            }
+            MalType::Keyword(k) => write!(f, ":{k}"),
+            MalType::Func(..) => todo!(),
+        }
+    }
+}
+
+fn join_list(v: &[MalType], join: &str) -> String {
+    v.iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>()
+        .join(join)
+}
+
+pub fn make_hashmap(seq: Vec<MalType>) -> Result<MalType, MalErr> {
+    if seq.len() % 2 != 0 {
+        return mal_err!("missing hashmap value or key");
+    }
+
+    let h = seq
+        .iter()
+        .tuples()
+        .map(|(key, val)| match key {
+            MalType::Str(_) => Ok((key.to_string(), val.clone())),
+            MalType::Keyword(_) => Ok((key.to_string(), val.clone())),
+            _ => Err(MalErr::String(
+                "hashmap key isn't a string or keyword".to_string(),
+            )),
+        })
+        .collect::<Result<HashMap<_, _>, MalErr>>()?;
+
+    Ok(MalType::HashMap(h))
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
 pub enum MalErr {
-    ErrString(String),
-    ErrMalVal(MalVal),
+    String(String),
+    MalType(MalType),
 }
 
-pub type MalArgs = Vec<MalVal>;
-pub type MalRet = Result<MalVal, MalErr>;
-
-// type utility macros
-
-macro_rules! list {
-  ($seq:expr) => {{
-    List(Rc::new($seq),Rc::new(Nil))
-  }};
-  [$($args:expr),*] => {{
-    let v: Vec<MalVal> = vec![$($args),*];
-    List(Rc::new(v),Rc::new(Nil))
-  }}
-}
-
-macro_rules! vector {
-  ($seq:expr) => {{
-    Vector(Rc::new($seq),Rc::new(Nil))
-  }};
-  [$($args:expr),*] => {{
-    let v: Vec<MalVal> = vec![$($args),*];
-    Vector(Rc::new(v),Rc::new(Nil))
-  }}
-}
-
-// type utility functions
-
-pub fn error(s: &str) -> MalRet {
-    Err(ErrString(s.to_string()))
-}
-
-pub fn format_error(e: MalErr) -> String {
-    match e {
-        ErrString(s) => s,
-        ErrMalVal(mv) => mv.pr_str(true),
-    }
-}
-
-pub fn atom(mv: &MalVal) -> MalVal {
-    Atom(Rc::new(RefCell::new(mv.clone())))
-}
-
-impl MalVal {
-    pub fn keyword(&self) -> MalRet {
+impl Display for MalErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Str(s) if s.starts_with('\u{29e}') => Ok(Str(s.to_string())),
-            Str(s) => Ok(Str(format!("\u{29e}{}", s))),
-            _ => error("invalid type for keyword"),
-        }
-    }
-
-    pub fn empty_q(&self) -> MalRet {
-        match self {
-            List(l, _) | Vector(l, _) => Ok(Bool(l.len() == 0)),
-            Nil => Ok(Bool(true)),
-            _ => error("invalid type for empty?"),
-        }
-    }
-
-    pub fn count(&self) -> MalRet {
-        match self {
-            List(l, _) | Vector(l, _) => Ok(Int(l.len() as i64)),
-            Nil => Ok(Int(0)),
-            _ => error("invalid type for count"),
-        }
-    }
-
-    pub fn apply(&self, args: MalArgs) -> MalRet {
-        match self {
-            Func(f, _) => f(args),
-            MalFunc {
-                eval,
-                ref ast,
-                env,
-                ref params,
-                ..
-            } => {
-                let fn_env = &env_bind(Some(env.clone()), params, args)?;
-                eval(ast, fn_env)
-            }
-            _ => error("attempt to call non-function"),
-        }
-    }
-
-    pub fn keyword_q(&self) -> bool {
-        matches!(self, Str(s) if s.starts_with('\u{29e}'))
-    }
-
-    pub fn deref(&self) -> MalRet {
-        match self {
-            Atom(a) => Ok(a.borrow().clone()),
-            _ => error("attempt to deref a non-Atom"),
-        }
-    }
-
-    pub fn reset_bang(&self, new: &MalVal) -> MalRet {
-        match self {
-            Atom(a) => {
-                *a.borrow_mut() = new.clone();
-                Ok(new.clone())
-            }
-            _ => error("attempt to reset! a non-Atom"),
-        }
-    }
-
-    pub fn swap_bang(&self, args: &MalArgs) -> MalRet {
-        match self {
-            Atom(a) => {
-                let f = &args[0];
-                let mut fargs = args[1..].to_vec();
-                fargs.insert(0, a.borrow().clone());
-                *a.borrow_mut() = f.apply(fargs)?;
-                Ok(a.borrow().clone())
-            }
-            _ => error("attempt to swap! a non-Atom"),
-        }
-    }
-
-    pub fn get_meta(&self) -> MalRet {
-        match self {
-            List(_, meta) | Vector(_, meta) | Hash(_, meta) => Ok((**meta).clone()),
-            Func(_, meta) => Ok((**meta).clone()),
-            MalFunc { meta, .. } => Ok((**meta).clone()),
-            _ => error("meta not supported by type"),
-        }
-    }
-
-    pub fn with_meta(&mut self, new_meta: &MalVal) -> MalRet {
-        match self {
-            List(_, ref mut meta)
-            | Vector(_, ref mut meta)
-            | Hash(_, ref mut meta)
-            | Func(_, ref mut meta)
-            | MalFunc { ref mut meta, .. } => {
-                *meta = Rc::new(new_meta.clone());
-            }
-            _ => return error("with-meta not supported by type"),
-        };
-        Ok(self.clone())
-    }
-}
-
-impl PartialEq for MalVal {
-    fn eq(&self, other: &MalVal) -> bool {
-        match (self, other) {
-            (Nil, Nil) => true,
-            (Bool(ref a), Bool(ref b)) => a == b,
-            (Int(ref a), Int(ref b)) => a == b,
-            (Str(ref a), Str(ref b)) => a == b,
-            (Sym(ref a), Sym(ref b)) => a == b,
-            (List(ref a, _), List(ref b, _))
-            | (Vector(ref a, _), Vector(ref b, _))
-            | (List(ref a, _), Vector(ref b, _))
-            | (Vector(ref a, _), List(ref b, _)) => a == b,
-            (Hash(ref a, _), Hash(ref b, _)) => a == b,
-            (MalFunc { .. }, MalFunc { .. }) => false,
-            _ => false,
+            MalErr::String(s) => write!(f, "{s}"),
+            MalErr::MalType(t) => write!(f, "{t}"),
         }
     }
 }
 
-pub fn func(f: fn(MalArgs) -> MalRet) -> MalVal {
-    Func(f, Rc::new(Nil))
-}
-
-pub fn _assoc(mut hm: FnvHashMap<String, MalVal>, kvs: MalArgs) -> MalRet {
-    if kvs.len() % 2 != 0 {
-        return error("odd number of elements");
-    }
-    for (k, v) in kvs.iter().tuples() {
-        match k {
-            Str(s) => {
-                hm.insert(s.to_string(), v.clone());
-            }
-            _ => return error("key is not string"),
-        }
-    }
-    Ok(Hash(Rc::new(hm), Rc::new(Nil)))
-}
-
-pub fn _dissoc(mut hm: FnvHashMap<String, MalVal>, ks: MalArgs) -> MalRet {
-    for k in ks {
-        match k {
-            Str(ref s) => {
-                let _ = hm.remove(s);
-            }
-            _ => return error("key is not string"),
-        }
-    }
-    Ok(Hash(Rc::new(hm), Rc::new(Nil)))
-}
-
-pub fn hash_map(kvs: MalArgs) -> MalRet {
-    let hm: FnvHashMap<String, MalVal> = FnvHashMap::default();
-    _assoc(hm, kvs)
-}
+pub type MalRet = Result<MalType, MalErr>;
+pub type MalArgs = Vec<MalType>;

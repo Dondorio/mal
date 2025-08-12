@@ -1,25 +1,11 @@
-#[macro_use]
-extern crate lazy_static;
-extern crate fnv;
-extern crate itertools;
-extern crate regex;
-
-extern crate rustyline;
-use rustyline::error::ReadlineError;
 use rustyline::Editor;
+use rustyline::error::ReadlineError;
 
-#[macro_use]
-#[allow(dead_code)]
-mod types;
-use crate::types::format_error;
-mod printer;
-mod reader;
-// TODO: figure out a way to avoid including env
-#[allow(dead_code)]
 mod env;
+mod reader;
+mod types;
 
 fn main() {
-    // `()` can be used when no completer is required
     let mut rl = Editor::<(), rustyline::history::DefaultHistory>::new().unwrap();
     if rl.load_history(".mal-history").is_err() {
         eprintln!("No previous history.");
@@ -32,18 +18,17 @@ fn main() {
                 let _ = rl.add_history_entry(&line);
                 rl.save_history(".mal-history").unwrap();
                 if !line.is_empty() {
-                    match reader::read_str(&line) {
-                        Ok(mv) => {
-                            println!("{}", mv.pr_str(true));
-                        }
-                        Err(e) => println!("Error: {}", format_error(e)),
+                    let form = reader::read_str(&line);
+                    match form {
+                        Ok(f) => println!("{f}"),
+                        Err(e) => eprintln!("Err: {e:?}"),
                     }
                 }
             }
             Err(ReadlineError::Interrupted) => continue,
             Err(ReadlineError::Eof) => break,
             Err(err) => {
-                println!("Error: {:?}", err);
+                println!("Error: {err:?}");
                 break;
             }
         }

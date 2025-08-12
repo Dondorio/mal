@@ -1,156 +1,153 @@
-use regex::{Captures, Regex};
-use std::rc::Rc;
+use lazy_static::lazy_static;
+use regex::Regex;
 
-use crate::types::MalErr::ErrString;
-use crate::types::MalVal::{Bool, Int, List, Nil, Str, Sym, Vector};
-use crate::types::{error, hash_map, MalErr, MalRet, MalVal};
+use crate::{mal_err, types::*};
 
-#[derive(Debug, Clone)]
-struct Reader {
+pub struct Reader {
     tokens: Vec<String>,
-    pos: usize,
+    index: usize,
 }
 
+pub fn read_str(input: &str) -> Result<MalType, MalErr> {
+    let tokens = tokenize(input);
+    Reader::new(tokens).read_form()
+}
+
+fn tokenize(input: &str) -> Vec<String> {
+    let re =
+        Regex::new(r##"[\s,]*(~@|[\[\]{}()'`~^@]|"(?:\\.|[^\\"])*"?|;.*|[^\s\[\]{}('"`,;)]*)"##)
+            .unwrap();
+    re.captures_iter(input)
+        .map(|s| (&s)[1].to_string())
+        .filter(|s| !s.starts_with(';'))
+        .collect()
+}
+
+#[allow(dead_code)]
 impl Reader {
-    fn next(&mut self) -> Result<String, MalErr> {
-        self.pos += 1;
-        Ok(self
-            .tokens
-            .get(self.pos - 1)
-            .ok_or_else(|| ErrString("underflow".to_string()))?
-            .to_string())
-    }
-    fn peek(&self) -> Result<String, MalErr> {
-        Ok(self
-            .tokens
-            .get(self.pos)
-            .ok_or_else(|| ErrString("underflow".to_string()))?
-            .to_string())
-    }
-}
-
-fn tokenize(str: &str) -> Vec<String> {
-    lazy_static! {
-        static ref RE: Regex = Regex::new(
-            r###"[\s,]*(~@|[\[\]{}()'`~^@]|"(?:\\.|[^\\"])*"?|;.*|[^\s\[\]{}('"`,;)]+)"###
-        )
-        .unwrap();
+    fn new(tokens: Vec<String>) -> Reader {
+        Reader { index: 0, tokens }
     }
 
-    let mut res = vec![];
-    for cap in RE.captures_iter(str) {
-        if cap[1].starts_with(';') {
-            continue;
+    fn next(&mut self) -> Option<&str> {
+        if self.index >= self.tokens.len() {
+            return None;
         }
-        res.push(String::from(&cap[1]));
-    }
-    res
-}
 
-fn unescape_str(s: &str) -> String {
-    lazy_static! {
-        static ref RE: Regex = Regex::new(r#"\\(.)"#).unwrap();
+        let out = &self.tokens[self.index];
+        self.index += 1;
+        Some(out)
     }
-    RE.replace_all(s, |caps: &Captures| {
-        if &caps[1] == "n" { "\n" } else { &caps[1] }.to_string()
-    })
-    .to_string()
-}
 
-fn read_atom(rdr: &mut Reader) -> MalRet {
-    lazy_static! {
-        static ref INT_RE: Regex = Regex::new(r"^-?[0-9]+$").unwrap();
-        static ref STR_RE: Regex = Regex::new(r#""(?:\\.|[^\\"])*""#).unwrap();
-    }
-    let token = rdr.next()?;
-    match &token[..] {
-        "nil" => Ok(Nil),
-        "false" => Ok(Bool(false)),
-        "true" => Ok(Bool(true)),
-        _ => {
-            if INT_RE.is_match(&token) {
-                Ok(Int(token.parse().unwrap()))
-            } else if STR_RE.is_match(&token) {
-                Ok(Str(unescape_str(&token[1..token.len() - 1])))
-            } else if token.starts_with('\"') {
-                error("expected '\"', got EOF")
-            } else if let Some(keyword) = token.strip_prefix(':') {
-                Ok(Str(format!("\u{29e}{}", keyword)))
-            } else {
-                Ok(Sym(token.to_string()))
-            }
+    fn peek(&mut self) -> Option<&str> {
+        if self.index >= self.tokens.len() {
+            return None;
         }
-    }
-}
 
-fn read_seq(rdr: &mut Reader, end: &str) -> MalRet {
-    let mut seq: Vec<MalVal> = vec![];
-    rdr.next()?;
-    loop {
-        let token = match rdr.peek() {
-            Ok(t) => t,
-            Err(_) => return error(&format!("expected '{}', got EOF", end)),
+        self.tokens.get(self.index).map(|t| t.as_str())
+    }
+
+    fn read_form(&mut self) -> MalRet {
+        let token = match self.peek() {
+            Some(t) => t,
+            None => return mal_err!("expected token, found EOF"),
         };
-        if token == end {
-            break;
-        }
-        seq.push(read_form(rdr)?)
-    }
-    let _ = rdr.next();
-    match end {
-        ")" => Ok(list!(seq)),
-        "]" => Ok(vector!(seq)),
-        "}" => hash_map(seq),
-        _ => error("read_seq unknown end value"),
-    }
-}
 
-fn read_form(rdr: &mut Reader) -> MalRet {
-    let token = rdr.peek()?;
-    match &token[..] {
-        "'" => {
-            let _ = rdr.next();
-            Ok(list![Sym("quote".to_string()), read_form(rdr)?])
+        fn symbol(r: &mut Reader, n: &str) -> Result<MalType, MalErr> {
+            Ok(MalType::List(vec![
+                MalType::Symbol(n.to_string()),
+                r.read_form()?,
+            ]))
         }
-        "`" => {
-            let _ = rdr.next();
-            Ok(list![Sym("quasiquote".to_string()), read_form(rdr)?])
-        }
-        "~" => {
-            let _ = rdr.next();
-            Ok(list![Sym("unquote".to_string()), read_form(rdr)?])
-        }
-        "~@" => {
-            let _ = rdr.next();
-            Ok(list![Sym("splice-unquote".to_string()), read_form(rdr)?])
-        }
-        "^" => {
-            let _ = rdr.next();
-            let meta = read_form(rdr)?;
-            Ok(list![Sym("with-meta".to_string()), read_form(rdr)?, meta])
-        }
-        "@" => {
-            let _ = rdr.next();
-            Ok(list![Sym("deref".to_string()), read_form(rdr)?])
-        }
-        ")" => error("unexpected ')'"),
-        "(" => read_seq(rdr, ")"),
-        "]" => error("unexpected ']'"),
-        "[" => read_seq(rdr, "]"),
-        "}" => error("unexpected '}'"),
-        "{" => read_seq(rdr, "}"),
-        _ => read_atom(rdr),
-    }
-}
 
-pub fn read_str(str: &str) -> MalRet {
-    let tokens = tokenize(str);
-    //println!("tokens: {:?}", tokens);
-    if tokens.is_empty() {
-        return error("no input");
+        match token {
+            "'" => {
+                self.next();
+                symbol(self, "quote")
+            }
+            "`" => {
+                self.next();
+                symbol(self, "quasiquote")
+            }
+            "~" => {
+                self.next();
+                symbol(self, "unquote")
+            }
+            "~@" => {
+                self.next();
+                symbol(self, "splice-unquote")
+            }
+            "^" => {
+                self.next();
+                let meta = self.read_form()?;
+                Ok(MalType::List(vec![
+                    MalType::Symbol("with-meta".to_string()),
+                    self.read_form()?,
+                    meta,
+                ]))
+            }
+            "@" => {
+                self.next();
+                symbol(self, "deref")
+            }
+            "(" => self.read_seq(")"),
+            "[" => self.read_seq("]"),
+            "{" => self.read_seq("}"),
+            _ => self.read_atom(),
+        }
     }
-    read_form(&mut Reader {
-        pos: 0,
-        tokens
-    })
+
+    fn read_seq(&mut self, closing: &str) -> MalRet {
+        let mut seq = Vec::new();
+        self.next();
+        loop {
+            match self.peek() {
+                Some(t) => {
+                    if t == closing {
+                        self.next();
+                        break;
+                    }
+                }
+                None => {
+                    return mal_err!("expected {closing} but found EOF");
+                }
+            };
+
+            seq.push(self.read_form()?);
+        }
+        match closing {
+            ")" => Ok(MalType::List(seq)),
+            "]" => Ok(MalType::Vec(seq)),
+            "}" => make_hashmap(seq),
+            _ => mal_err!("unknown symbol: {closing}"),
+        }
+    }
+
+    // return mal type based off regex probably
+    fn read_atom(&mut self) -> MalRet {
+        lazy_static! {
+            static ref INT_RE: Regex = Regex::new(r"^-?[0-9]+$").unwrap();
+            static ref STR_RE: Regex = Regex::new(r#""(?:\\.|[^\\"])*""#).unwrap();
+        }
+
+        let token = self.next().unwrap();
+
+        if INT_RE.is_match(token) {
+            return Ok(MalType::Int(token.parse().unwrap()));
+        } else if STR_RE.is_match(token) {
+            // TODO trim " only once
+            return Ok(MalType::Str(token.trim_matches('"').to_string()));
+        } else if token.starts_with("\"") {
+            return mal_err!("unbalanced \"");
+        } else if let Some(k) = token.strip_prefix(":") {
+            return Ok(MalType::Keyword(k.to_string()));
+        }
+
+        Ok(match token {
+            "true" => MalType::Bool(true),
+            "false" => MalType::Bool(false),
+
+            _ => MalType::Symbol(token.to_string()),
+        })
+    }
 }
