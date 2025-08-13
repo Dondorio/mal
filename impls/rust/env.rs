@@ -1,5 +1,9 @@
 use itertools::Itertools;
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Display},
+    rc::Rc,
+};
 
 use crate::{mal_err, types::*};
 
@@ -78,5 +82,18 @@ impl MalEnv {
 
     pub fn set(&mut self, key: String, val: MalType) -> Option<MalType> {
         self.data.insert(key, val)
+    }
+}
+
+impl Display for MalEnv {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let outer_str = match self.outer.is_some() {
+            false => "none".to_string(),
+            true => self.outer.clone().unwrap().to_string(),
+        };
+
+        let out: String = format!("outer: {},\ndata: {:?}", outer_str, self.data);
+
+        writeln!(f, "{{ {out}}}")
     }
 }

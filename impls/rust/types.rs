@@ -27,6 +27,11 @@ pub enum MalType {
 #[allow(dead_code)]
 impl MalType {
     pub fn eval(&self, env: &Rc<RefCell<MalEnv>>) -> MalRet {
+        if env.borrow().get("DEBUG-EVAL").is_some() {
+            println!("EVAL: {self}");
+            println!("{}", env.borrow())
+        }
+
         match self {
             Self::List(l) => {
                 if l.is_empty() {
