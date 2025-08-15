@@ -4,6 +4,7 @@ use std::rc::Rc;
 use rustyline::Editor;
 use rustyline::error::ReadlineError;
 
+mod core;
 mod env;
 mod reader;
 mod types;

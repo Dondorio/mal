@@ -42,19 +42,19 @@ impl MalEnv {
 
         e.set(
             "+".to_string(),
-            MalType::Func(|args| int_op(args, |a, b| a + b)),
+            MalType::Builtin(|args| int_op(args, |a, b| a + b)),
         );
         e.set(
             "-".to_string(),
-            MalType::Func(|args| int_op(args, |a, b| a - b)),
+            MalType::Builtin(|args| int_op(args, |a, b| a - b)),
         );
         e.set(
             "*".to_string(),
-            MalType::Func(|args| int_op(args, |a, b| a * b)),
+            MalType::Builtin(|args| int_op(args, |a, b| a * b)),
         );
         e.set(
             "/".to_string(),
-            MalType::Func(|args| int_op(args, |a, b| a / b)),
+            MalType::Builtin(|args| int_op(args, |a, b| a / b)),
         );
         e
     }
@@ -71,6 +71,7 @@ impl MalEnv {
 
         loop {
             if let Some(val) = tmp_env.data.get(key) {
+                println!("found {key}: {val:?}");
                 return Some(val);
             } else if let Some(new_env) = &tmp_env.outer {
                 tmp_env = new_env;
@@ -82,6 +83,22 @@ impl MalEnv {
 
     pub fn set(&mut self, key: String, val: MalType) -> Option<MalType> {
         self.data.insert(key, val)
+    }
+
+    pub fn bind_env(&mut self, from: &[MalType], to: &[MalType]) -> Result<(), MalErr> {
+        if from.len() != to.len() {
+            return mal_err!(
+                "bind failed: both sides must have the same size, {} != {}",
+                from.len(),
+                to.len()
+            );
+        }
+
+        for (i, j) in from.iter().enumerate() {
+            self.set(j.to_string(), to[i].clone());
+        }
+
+        Ok(())
     }
 }
 
