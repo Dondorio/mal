@@ -7,7 +7,7 @@ use std::{
 
 use crate::{mal_err, types::*};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct MalEnv {
     outer: Option<Rc<MalEnv>>,
     data: HashMap<String, MalType>,
@@ -71,7 +71,6 @@ impl MalEnv {
 
         loop {
             if let Some(val) = tmp_env.data.get(key) {
-                println!("found {key}: {val:?}");
                 return Some(val);
             } else if let Some(new_env) = &tmp_env.outer {
                 tmp_env = new_env;

@@ -19,6 +19,10 @@ fn main() {
 
     let repl_env = &Rc::new(RefCell::new(MalEnv::new()));
 
+    for i in core::ns() {
+        repl_env.borrow_mut().set(i.0.to_string(), i.1);
+    }
+
     loop {
         let readline = rl.readline("user> ");
         match readline {

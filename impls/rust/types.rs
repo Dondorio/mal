@@ -9,7 +9,7 @@ macro_rules! mal_err {
     };
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 #[allow(dead_code)]
 pub enum MalType {
     Nil,
@@ -150,8 +150,8 @@ fn eval_list_symbol(sym: &str, l: &[MalType], env: &Rc<RefCell<MalEnv>>) -> MalR
             let eval = MalType::eval;
             let ast = Rc::new(l[1].clone());
             let args = match &l[0] {
-                MalType::List(l) => l,
-                _ => return mal_err!("expected first argument to be a list of args"),
+                MalType::List(l) | MalType::Vec(l) => l,
+                _ => return mal_err!("expected first argument to be a list or vec of args"),
             }
             .clone();
 
@@ -195,7 +195,7 @@ fn set_env_from_vec(l: (&MalType, &MalType), env: &Rc<RefCell<MalEnv>>) -> Resul
 impl Display for MalType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MalType::Nil => write!(f, "Nil"),
+            MalType::Nil => write!(f, "nil"),
             MalType::Int(i) => write!(f, "{i}",),
             MalType::Symbol(s) => write!(f, "{s}"),
             MalType::Str(s) => write!(f, "\"{s}\""),
@@ -211,9 +211,9 @@ impl Display for MalType {
                 write!(f, "{{{s}}}")
             }
             MalType::Keyword(k) => write!(f, ":{k}"),
-            MalType::Builtin(..) => todo!(),
-            MalType::MalFunc { args, .. } => {
-                write!(f, "#<function>({})", join_list(args, " "))
+            MalType::Builtin(..) => write!(f, "builtin"),
+            MalType::MalFunc { args, ast, .. } => {
+                write!(f, "#<function>({}) {ast}", join_list(args, " "))
             }
         }
     }

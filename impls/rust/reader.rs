@@ -146,6 +146,7 @@ impl Reader {
         Ok(match token {
             "true" => MalType::Bool(true),
             "false" => MalType::Bool(false),
+            "nil" => MalType::Nil,
 
             _ => MalType::Symbol(token.to_string()),
         })
