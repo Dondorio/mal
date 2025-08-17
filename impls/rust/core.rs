@@ -1,6 +1,6 @@
 use std::mem::discriminant;
 
-use crate::{mal_err, types::*};
+use crate::{mal_err, reader::read_str, types::*};
 use itertools::Itertools;
 
 macro_rules! lisp_fn {
@@ -89,6 +89,10 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
         ),
         // Bool
         (
+            "not",
+            read_str("(fn* (a) (if a false true))").unwrap(),
+        ),
+        (
             "list?",
             MalType::Builtin(|args| {
                 Ok(MalType::Bool(
@@ -108,6 +112,7 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
                 ))
             }),
         ),
+
         // Io
         (
             "prn",

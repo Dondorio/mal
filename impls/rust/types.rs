@@ -58,9 +58,49 @@ impl MalType {
                         args,
                         env: fn_env,
                     } => {
-                        let evaluated_args= l[1..].iter().map(|e| e.eval(env)).collect::<Result<Vec<MalType>, MalErr>>()?;
+                        let mut args_mut = args.clone();
+
+                        let evaluated_args = if args.len() >= 2
+                            && let MalType::Symbol(sym) = &args[args.len() - 2]
+                            && sym == "&"
+                        {
+                            let expected_len = args.len() - 1;
+
+                            if l.len() < expected_len {
+                                return mal_err!(
+                                    "{ast} expected at least {} arguments, found {}",
+                                    expected_len,
+                                    l.len() - 1
+                                );
+                            }
+
+                            let mut ar = l[1..expected_len]
+                                .iter()
+                                .clone()
+                                .map(|e| e.eval(env))
+                                .collect::<Result<Vec<MalType>, MalErr>>()?;
+
+                            // Janky piece of shit code
+                            // It's here so the hew & args return a list
+                            // TODO move the condidionals for & syntax to bind_env
+                            let mut p = vec![MalType::Symbol("list".to_string())];
+                            p.extend_from_slice(&l[expected_len..]);
+
+                            ar.push(MalType::List(p));
+
+                            args_mut.remove(expected_len - 1);
+
+                            println!("{ar:?}");
+                            ar
+                        } else {
+                            l[1..]
+                                .iter()
+                                .map(|e| e.eval(env))
+                                .collect::<Result<Vec<MalType>, MalErr>>()?
+                        };
+
                         let mut new_env = fn_env.borrow().new_into_outer();
-                        new_env.bind_env(args, &evaluated_args)?;
+                        new_env.bind_env(&args_mut, &evaluated_args)?;
 
                         eval(ast, &Rc::new(RefCell::new(new_env)))
                     }
