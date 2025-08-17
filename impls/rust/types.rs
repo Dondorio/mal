@@ -56,11 +56,13 @@ impl MalType {
                         eval,
                         ast,
                         args,
-                        env,
+                        env: fn_env,
                     } => {
-                        let new_env = env.clone();
-                        new_env.borrow_mut().bind_env(args, &l[1..])?;
-                        eval(ast, &new_env)
+                        let evaluated_args= l[1..].iter().map(|e| e.eval(env)).collect::<Result<Vec<MalType>, MalErr>>()?;
+                        let mut new_env = fn_env.borrow().new_into_outer();
+                        new_env.bind_env(args, &evaluated_args)?;
+
+                        eval(ast, &Rc::new(RefCell::new(new_env)))
                     }
                     _ => mal_err!("expected symbol or func, found: {}", l[0]),
                 }
