@@ -128,6 +128,7 @@ impl Reader {
         lazy_static! {
             static ref INT_RE: Regex = Regex::new(r"^-?[0-9]+$").unwrap();
             static ref STR_RE: Regex = Regex::new(r#""(?:\\.|[^\\"])*""#).unwrap();
+            static ref ESC_RE: Regex = Regex::new(r#"\\(.)"#).unwrap();
         }
 
         let token = self.next().unwrap();
@@ -135,8 +136,17 @@ impl Reader {
         if INT_RE.is_match(token) {
             return Ok(MalType::Int(token.parse().unwrap()));
         } else if STR_RE.is_match(token) {
-            // TODO trim " only once
-            return Ok(MalType::Str(token.trim_matches('"').to_string()));
+            let mut str = token.chars();
+            str.next();
+            str.next_back();
+
+            let s = ESC_RE
+                .replace_all(str.as_str(), |caps: &regex::Captures| {
+                    if &caps[1] == "n" { "\n" } else { &caps[1] }.to_string()
+                })
+                .to_string();
+
+            return Ok(MalType::Str(s.to_string()));
         } else if token.starts_with("\"") {
             return mal_err!("unbalanced \"");
         } else if let Some(k) = token.strip_prefix(":") {

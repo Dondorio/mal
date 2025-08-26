@@ -88,10 +88,7 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
             lisp_fn!(|a: MalType::Int, b: MalType::Int| Ok(MalType::Bool(a <= b))),
         ),
         // Bool
-        (
-            "not",
-            read_str("(fn* (a) (if a false true))").unwrap(),
-        ),
+        ("not", read_str("(fn* (a) (if a false true))").unwrap()),
         (
             "list?",
             MalType::Builtin(|args| {
@@ -112,12 +109,11 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
                 ))
             }),
         ),
-
         // Io
         (
             "prn",
             MalType::Builtin(|args| {
-                println!("{}", args.iter().join(" "));
+                println!("{}", args.iter().map(|e| format!("{e:#}")).join(" "));
                 Ok(MalType::Nil)
             }),
         ),
@@ -133,6 +129,14 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
         (
             "str",
             MalType::Builtin(|args| Ok(MalType::Str(args.iter().join("")))),
+        ),
+        (
+            "pr-str",
+            MalType::Builtin(|args| {
+                Ok(MalType::Str(
+                    args.iter().map(|e| format!("{e:#}")).join(" "),
+                ))
+            }),
         ),
         // Index
         // Do

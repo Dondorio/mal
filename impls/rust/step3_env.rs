@@ -30,7 +30,7 @@ fn main() {
                         Ok(f) => println!(
                             "{}",
                             match f.eval(repl_env) {
-                                Ok(o) => o.to_string(),
+                                Ok(o) => format!("{o:#}"),
                                 Err(e) => format!("{e}"),
                             }
                         ),

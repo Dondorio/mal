@@ -234,28 +234,77 @@ fn set_env_from_vec(l: (&MalType, &MalType), env: &Rc<RefCell<MalEnv>>) -> Resul
 
 // ---- eval
 
+// TODO write_with_alt!() macro
+// ":#" for print_readability
 impl Display for MalType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MalType::Nil => write!(f, "nil"),
             MalType::Int(i) => write!(f, "{i}",),
             MalType::Symbol(s) => write!(f, "{s}"),
-            MalType::Str(s) => write!(f, "\"{s}\""),
+            MalType::Str(s) => {
+                // print readability
+                if f.alternate() {
+                    let x = s
+                        .chars()
+                        .map(|c| match c {
+                            '"' => "\\\"".to_string(),
+                            '\n' => "\\n".to_string(),
+                            '\\' => "\\\\".to_string(),
+                            _ => c.to_string(),
+                        })
+                        .collect::<Vec<String>>()
+                        .join("");
+
+                    write!(f, "\"{x}\"")
+                } else {
+                    write!(f, "{s}")
+                }
+            }
             MalType::Bool(b) => write!(f, "{b}"),
             MalType::List(l) => {
-                write!(f, "({})", join_list(l, " "))
+                if f.alternate() {
+                    write!(
+                        f,
+                        "({:#})",
+                        l.into_iter().map(|e| format!("{e:#}")).join(" ")
+                    )
+                } else {
+                    write!(f, "({})", l.into_iter().join(" "))
+                }
             }
             MalType::Vec(v) => {
-                write!(f, "[{}]", join_list(v, " "))
+                if f.alternate() {
+                    write!(
+                        f,
+                        "[{:#}]",
+                        v.into_iter().map(|e| format!("{e:#}")).join(" ")
+                    )
+                } else {
+                    write!(f, "[{}]", v.into_iter().join(" "))
+                }
             }
             MalType::HashMap(h) => {
                 let s = h.iter().map(|(key, val)| format!("{key} {val}")).join(" ");
-                write!(f, "{{{s}}}")
+
+                if f.alternate() {
+                    write!(f, "{{{s:#}}}")
+                } else {
+                    write!(f, "{{{s}}}")
+                }
             }
             MalType::Keyword(k) => write!(f, ":{k}"),
             MalType::Builtin(..) => write!(f, "builtin"),
             MalType::MalFunc { args, ast, .. } => {
-                write!(f, "#<function>({}) {ast}", join_list(args, " "))
+                if f.alternate() {
+                    write!(
+                        f,
+                        "#<function>({}) {ast}",
+                        args.into_iter().map(|e| format!("{e:#}")).join(" ")
+                    )
+                } else {
+                    write!(f, "#<function>({}) {ast}", args.into_iter().join(" "))
+                }
             }
         }
     }
