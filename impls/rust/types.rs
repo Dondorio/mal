@@ -1,6 +1,6 @@
 use crate::env::*;
 use itertools::Itertools;
-use std::{cell::RefCell, collections::HashMap, fmt::Display, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt::Display, ops::Deref, rc::Rc};
 
 #[macro_export]
 macro_rules! mal_err {
@@ -23,8 +23,6 @@ pub enum MalType {
     Keyword(String),
     Builtin(fn(Vec<MalType>) -> MalRet),
     MalFunc {
-        // needed for custom eval functions for things like macros
-        eval: fn(&MalType, &Rc<RefCell<MalEnv>>) -> MalRet,
         ast: Rc<Self>,
         args: MalArgs,
         env: Rc<RefCell<MalEnv>>,
@@ -57,189 +55,237 @@ impl PartialEq for MalType {
 
 #[allow(dead_code)]
 impl MalType {
-    pub fn eval(&self, env: &Rc<RefCell<MalEnv>>) -> MalRet {
-        if env.borrow().get("DEBUG-EVAL").is_some() {
-            println!("EVAL: {self}");
-            println!("{}", env.borrow())
-        }
+    pub fn eval(&self, env_original: &Rc<RefCell<MalEnv>>) -> MalRet {
+        let mut ast = self;
+        let mut env = env_original;
 
-        match self {
-            Self::List(l) => {
-                if l.is_empty() {
-                    return Ok(Self::List(Vec::new()));
-                }
+        // literal black magic I had to steal from the existing rust impl
+        let mut live_ast;
+        let mut live_env;
 
-                match &l[0].eval(env)? {
-                    Self::Symbol(sym) => eval_list_symbol(sym, &l[1..], env),
-                    // it's a list for some reason
-                    // so it isn't a malfunc
-                    // with
-                    Self::MalFunc {
-                        eval,
-                        ast,
-                        args,
-                        env: fn_env,
-                    } => {
-                        let mut args_mut = args.clone();
-
-                        let evaluated_args = if args.len() >= 2
-                            && let MalType::Symbol(sym) = &args[args.len() - 2]
-                            && sym == "&"
-                        {
-                            let expected_len = args.len() - 1;
-
-                            if l.len() < expected_len {
-                                return mal_err!(
-                                    "{ast} expected at least {} arguments, found {}",
-                                    expected_len,
-                                    l.len() - 1
-                                );
-                            }
-
-                            let mut ar = l[1..expected_len]
-                                .iter()
-                                .clone()
-                                .map(|e| e.eval(env))
-                                .collect::<Result<Vec<MalType>, MalErr>>()?;
-
-                            // Janky piece of shit code
-                            // It's here so the hew & args return a list
-                            // TODO move the condidionals for & syntax to bind_env
-                            let mut p = vec![MalType::Symbol("list".to_string())];
-                            p.extend_from_slice(&l[expected_len..]);
-
-                            ar.push(MalType::List(p));
-
-                            args_mut.remove(expected_len - 1);
-
-                            println!("{ar:?}");
-                            ar
-                        } else {
-                            l[1..]
-                                .iter()
-                                .map(|e| e.eval(env))
-                                .collect::<Result<Vec<MalType>, MalErr>>()?
-                        };
-
-                        let mut new_env = fn_env.borrow().new_into_outer();
-                        new_env.bind_env(&args_mut, &evaluated_args)?;
-
-                        eval(ast, &Rc::new(RefCell::new(new_env)))
-                    }
-                    _ => mal_err!("expected symbol or func, found: {}", l[0]),
-                }
-            }
-            Self::Vec(v) => {
-                Ok(Self::Vec(v.iter().map(|e| e.eval(env)).collect::<Result<
-                    Vec<Self>,
-                    MalErr,
-                >>(
-                )?))
-            }
-            Self::HashMap(h) => Ok(Self::HashMap(
-                h.iter()
-                    .map(|(k, v)| Ok((k.clone(), v.eval(env)?)))
-                    .collect::<Result<HashMap<String, MalType>, MalErr>>()?,
-            )),
-            Self::Symbol(s) => match env.borrow().get(s.as_str()) {
-                Some(Self::Builtin(..)) => Ok(self.clone()),
-                Some(e) => e.eval(env),
-                None => Ok(self.clone()),
-            },
-            _ => Ok(self.clone()),
-        }
-    }
-}
-
-fn eval_list_symbol(sym: &str, l: &[MalType], env: &Rc<RefCell<MalEnv>>) -> MalRet {
-    match sym {
-        "def!" => set_env_from_vec((&l[0], &l[1]), env),
-        "let*" => {
-            if l.len() != 2 {
-                return mal_err!("let* failed: expected 2 elements, found {}", l.len() - 1);
+        'tco: loop {
+            if env.borrow().get("DEBUG-EVAL").is_some() {
+                println!("EVAL: {self}");
+                println!("{}", env.borrow())
             }
 
-            match &l[0] {
-                MalType::List(l1) | MalType::Vec(l1) => {
-                    let new_env = &Rc::new(RefCell::new(env.borrow().new_into_outer()));
-
-                    if l1.len() % 2 != 0 {
-                        return mal_err!("let* failed: expected symbol type pairs");
+            match ast {
+                Self::List(l) => {
+                    if l.is_empty() {
+                        return Ok(Self::List(Vec::new()));
                     }
 
-                    for i in l1.iter().tuples::<(_, _)>() {
-                        set_env_from_vec(i, new_env)
-                            .map_err(|e| MalErr::String(format!("let* failed: {e}")))?;
+                    match l[0].eval(env)? {
+                        Self::Symbol(sym) => {
+                            let args: &[MalType] = &l[1..];
+
+                            return match sym.as_str() {
+                                "def!" => set_env_from_vec((&args[0], &args[1]), env),
+                                "let*" => {
+                                    if args.len() != 2 {
+                                        return mal_err!(
+                                            "let* failed: expected 2 elements, found {}",
+                                            args.len() - 1
+                                        );
+                                    }
+
+                                    match &args[0] {
+                                        MalType::List(l1) | MalType::Vec(l1) => {
+                                            live_env = Rc::new(RefCell::new(
+                                                env.clone().borrow().new_into_outer(),
+                                            ));
+                                            env = &live_env;
+
+                                            if l1.len() % 2 != 0 {
+                                                return mal_err!(
+                                                    "let* failed: expected symbol type pairs"
+                                                );
+                                            }
+
+                                            for i in l1.iter().tuples::<(_, _)>() {
+                                                set_env_from_vec(i, env).map_err(|e| {
+                                                    MalErr::String(format!("let* failed: {e}"))
+                                                })?;
+                                            }
+
+                                            ast = &args[1];
+                                            continue 'tco;
+                                        }
+                                        _ => {
+                                            mal_err!(
+                                                "expected first argument to be list, found {} ",
+                                                args[0]
+                                            )
+                                        }
+                                    }
+                                }
+                                "do" => {
+                                    if args.is_empty() {
+                                        return mal_err!(
+                                            "expected at least one argument, found {}",
+                                            args.len()
+                                        );
+                                    }
+
+                                    args[0..args.len() - 1]
+                                        .iter()
+                                        .map(|e| e.eval(env))
+                                        .collect::<Result<Vec<MalType>, MalErr>>()?;
+
+                                    ast = &args[args.len() - 1];
+                                    continue 'tco;
+                                }
+                                "if" => {
+                                    if args.len() < 2 || args.len() > 3 {
+                                        return mal_err!(
+                                            "expected three or four arguments, found {}",
+                                            args.len()
+                                        );
+                                    }
+
+                                    // If false
+                                    if let MalType::Nil | MalType::Bool(false) =
+                                        args[0].eval(env)?
+                                    {
+                                        if args.len() == 3 {
+                                            ast = &args[2];
+                                            continue 'tco;
+                                        }
+
+                                        return Ok(MalType::Nil);
+                                    }
+
+                                    ast = &args[1];
+                                    continue 'tco;
+                                }
+                                "fn*" => {
+                                    if args.len() != 2 {
+                                        return mal_err!(
+                                            "expected 2 arguments, found {}",
+                                            args.len()
+                                        );
+                                    }
+
+                                    let ast = Rc::new(args[1].clone());
+                                    let args = match &args[0] {
+                                        MalType::List(l) | MalType::Vec(l) => l,
+                                        _ => return mal_err!("expected first argument to be a list or vec of args"),
+                                    }
+                                    .clone();
+
+                                    Ok(MalType::MalFunc {
+                                        ast,
+                                        args,
+                                        env: env.clone(),
+                                    })
+                                }
+                                _ => match env.borrow().get(&sym) {
+                                    Some(env_match) => {
+                                        let args = args
+                                            .iter()
+                                            .map(|i| i.eval(env))
+                                            .collect::<Result<Vec<MalType>, MalErr>>()?;
+
+                                        match env_match {
+                                            MalType::Builtin(f) => f(args),
+                                            _ => {
+                                                live_ast = env_match.clone();
+                                                ast = &live_ast;
+                                                continue 'tco;
+                                            }
+                                        }
+                                    }
+                                    None => mal_err!("'{sym}' not found"),
+                                },
+                            };
+                        }
+                        Self::MalFunc {
+                            ast: fn_ast,
+                            args,
+                            env: fn_env,
+                        } => {
+                            let mut args_mut = args.clone();
+
+                            let evaluated_args = if args.len() >= 2
+                                && let MalType::Symbol(sym) = &args[args.len() - 2]
+                                && sym == "&"
+                            {
+                                let expected_len = args.len() - 1;
+
+                                if l.len() < expected_len {
+                                    return mal_err!(
+                                        "{fn_ast} expected at least {} arguments, found {}",
+                                        expected_len,
+                                        l.len() - 1
+                                    );
+                                }
+
+                                let mut ar = l[1..expected_len]
+                                    .iter()
+                                    .clone()
+                                    .map(|e| e.eval(env))
+                                    .collect::<Result<Vec<MalType>, MalErr>>()?;
+
+                                // Janky piece of shit code
+                                // It's here so the hew & args return a list
+                                // TODO move the condidionals for & syntax to bind_env
+                                let mut p = vec![MalType::Symbol("list".to_string())];
+                                p.extend_from_slice(&l[expected_len..]);
+
+                                ar.push(MalType::List(p));
+
+                                args_mut.remove(expected_len - 1);
+
+                                ar
+                            } else {
+                                l[1..]
+                                    .iter()
+                                    .map(|e| e.eval(env))
+                                    .collect::<Result<Vec<MalType>, MalErr>>()?
+                            };
+
+                            let mut new_env = fn_env.borrow().new_into_outer();
+                            new_env.bind_env(&args_mut, &evaluated_args)?;
+
+                            live_ast = fn_ast.deref().clone();
+                            ast = &live_ast;
+
+                            live_env = Rc::new(RefCell::new(new_env));
+                            env = &live_env;
+
+                            continue 'tco;
+                        }
+                        _ => return mal_err!("expected symbol or func, found: {}", l[0]),
                     }
-
-                    l[1].eval(new_env)
                 }
-                _ => {
-                    mal_err!("expected first argument to be list, found {} ", l[0])
+                Self::Vec(v) => {
+                    return Ok(Self::Vec(v.iter().map(|e| e.eval(env)).collect::<Result<
+                        Vec<Self>,
+                        MalErr,
+                    >>(
+                    )?));
                 }
+                Self::HashMap(h) => {
+                    return Ok(Self::HashMap(
+                        h.iter()
+                            .map(|(k, v)| Ok((k.clone(), v.eval(env)?)))
+                            .collect::<Result<HashMap<String, MalType>, MalErr>>()?,
+                    ));
+                }
+                Self::Symbol(s) => {
+                    return match env.clone().borrow().get(s.as_str()) {
+                        Some(Self::Builtin(..)) => Ok(ast.clone()),
+                        Some(e) => {
+                            live_ast = e.clone();
+                            ast = &live_ast;
+                            continue 'tco;
+                        }
+                        None => Ok(ast.clone()),
+                    };
+                }
+                _ => return Ok(ast.clone()),
             }
         }
-        "do" => {
-            if l.is_empty() {
-                return mal_err!("expected at least one argument, found {}", l.len());
-            }
-
-            Ok(l[0..]
-                .iter()
-                .map(|e| e.eval(env))
-                .collect::<Result<Vec<MalType>, MalErr>>()?[l.len() - 1]
-                .clone())
-        }
-        "if" => {
-            if l.len() < 2 || l.len() > 3 {
-                return mal_err!("expected three or four arguments, found {}", l.len());
-            }
-
-            // If false
-            if let MalType::Nil | MalType::Bool(false) = l[0].eval(env)? {
-                if l.len() == 3 {
-                    return l[2].eval(env);
-                }
-
-                return Ok(MalType::Nil);
-            }
-
-            l[1].eval(env)
-        }
-        "fn*" => {
-            if l.len() != 2 {
-                return mal_err!("expected 2 arguments, found {}", l.len());
-            }
-
-            let eval = MalType::eval;
-            let ast = Rc::new(l[1].clone());
-            let args = match &l[0] {
-                MalType::List(l) | MalType::Vec(l) => l,
-                _ => return mal_err!("expected first argument to be a list or vec of args"),
-            }
-            .clone();
-
-            Ok(MalType::MalFunc {
-                eval,
-                ast,
-                args,
-                env: env.clone(),
-            })
-        }
-        _ => match env.borrow().get(sym) {
-            Some(env_match) => {
-                let args = l
-                    .iter()
-                    .map(|i| i.eval(env))
-                    .collect::<Result<Vec<MalType>, MalErr>>()?;
-
-                match env_match {
-                    MalType::Builtin(f) => f(args),
-                    _ => env_match.eval(env),
-                }
-            }
-            None => mal_err!("'{sym}' not found"),
-        },
     }
 }
 
