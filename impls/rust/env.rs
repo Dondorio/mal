@@ -7,7 +7,7 @@ use std::{
 
 use crate::{mal_err, types::*};
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MalEnv {
     outer: Option<Rc<MalEnv>>,
     data: HashMap<String, MalType>,

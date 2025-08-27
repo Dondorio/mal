@@ -9,7 +9,7 @@ macro_rules! mal_err {
     };
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum MalType {
     Nil,
@@ -29,6 +29,28 @@ pub enum MalType {
         args: MalArgs,
         env: Rc<RefCell<MalEnv>>,
     },
+}
+
+impl PartialEq for MalType {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Int(a), Self::Int(b)) => a == b,
+            (Self::Symbol(a), Self::Symbol(b)) => a == b,
+            (Self::Str(a), Self::Str(b)) => a == b,
+            (Self::Bool(a), Self::Bool(b)) => a == b,
+            // ----- list/vec -----
+            (Self::List(a), Self::List(b))
+            | (Self::Vec(a), Self::Vec(b))
+            | (Self::List(a), Self::Vec(b))
+            | (Self::Vec(a), Self::List(b)) => a == b,
+            // ----- list/vec
+            (Self::HashMap(a), Self::HashMap(b)) => a == b,
+            (Self::Keyword(a), Self::Keyword(b)) => a == b,
+            (Self::Builtin(a), Self::Builtin(b)) => std::ptr::fn_addr_eq(*a, *b),
+            (Self::MalFunc { .. }, Self::MalFunc { .. }) => false,
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
 }
 
 // ----- eval -----
@@ -264,24 +286,16 @@ impl Display for MalType {
             MalType::Bool(b) => write!(f, "{b}"),
             MalType::List(l) => {
                 if f.alternate() {
-                    write!(
-                        f,
-                        "({:#})",
-                        l.into_iter().map(|e| format!("{e:#}")).join(" ")
-                    )
+                    write!(f, "({:#})", l.iter().map(|e| format!("{e:#}")).join(" "))
                 } else {
-                    write!(f, "({})", l.into_iter().join(" "))
+                    write!(f, "({})", l.iter().join(" "))
                 }
             }
             MalType::Vec(v) => {
                 if f.alternate() {
-                    write!(
-                        f,
-                        "[{:#}]",
-                        v.into_iter().map(|e| format!("{e:#}")).join(" ")
-                    )
+                    write!(f, "[{:#}]", v.iter().map(|e| format!("{e:#}")).join(" "))
                 } else {
-                    write!(f, "[{}]", v.into_iter().join(" "))
+                    write!(f, "[{}]", v.iter().join(" "))
                 }
             }
             MalType::HashMap(h) => {
@@ -300,21 +314,14 @@ impl Display for MalType {
                     write!(
                         f,
                         "#<function>({}) {ast}",
-                        args.into_iter().map(|e| format!("{e:#}")).join(" ")
+                        args.iter().map(|e| format!("{e:#}")).join(" ")
                     )
                 } else {
-                    write!(f, "#<function>({}) {ast}", args.into_iter().join(" "))
+                    write!(f, "#<function>({}) {ast}", args.iter().join(" "))
                 }
             }
         }
     }
-}
-
-fn join_list(v: &[MalType], join: &str) -> String {
-    v.iter()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>()
-        .join(join)
 }
 
 pub fn make_hashmap(seq: Vec<MalType>) -> Result<MalType, MalErr> {
