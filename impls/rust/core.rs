@@ -1,4 +1,4 @@
-use std::mem::discriminant;
+use std::{fs, mem::discriminant};
 
 use crate::{mal_err, reader::read_str, types::*};
 use itertools::Itertools;
@@ -124,6 +124,20 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
                 Ok(MalType::Nil)
             }),
         ),
+        ("read-string", lisp_fn!(|s: MalType::Str| read_str(s))),
+        (
+            "slurp",
+            lisp_fn!(|s: MalType::Str| if let Ok(str) = fs::read_to_string(s) {
+                Ok(MalType::Str(str))
+            } else {
+                mal_err!("failed to read file")
+            }),
+        ),
+        // (
+        //     "load-file",
+        //     read_str("(fn* (f) (eval (read-string (str \"(do \" (slurp f) \"\nnil)\"))))")
+        //         .expect("load-file definition parse failed"),
+        // ),
         // Declare
         ("list", MalType::Builtin(|args| Ok(MalType::List(args)))),
         (

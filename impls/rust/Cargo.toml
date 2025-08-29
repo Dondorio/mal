@@ -33,3 +33,7 @@ path = "step4_if_fn_do.rs"
 [[bin]]
 name = "step5_tco"
 path = "step5_tco.rs"
+
+[[bin]]
+name = "step6_file"
+path = "step6_file.rs"

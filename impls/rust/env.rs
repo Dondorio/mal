@@ -84,7 +84,9 @@ impl MalEnv {
         self.data.insert(key, val)
     }
 
-    pub fn bind_env(&mut self, from: &[MalType], to: &[MalType]) -> Result<(), MalErr> {
+    pub fn bind_env(&mut self, from: &[MalType], to: &[MalType]) -> Result<Self, MalErr> {
+        let mut env = self.new_into_outer();
+
         if from.len() != to.len() {
             return mal_err!(
                 "bind failed: both sides must have the same size, {} != {}",
@@ -94,10 +96,10 @@ impl MalEnv {
         }
 
         for (i, j) in from.iter().enumerate() {
-            self.set(j.to_string(), to[i].clone());
+            env.set(j.to_string(), to[i].clone());
         }
 
-        Ok(())
+        Ok(env)
     }
 }
 

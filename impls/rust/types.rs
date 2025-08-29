@@ -29,6 +29,8 @@ pub enum MalType {
     },
 }
 
+unsafe impl Sync for MalType {}
+
 impl PartialEq for MalType {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -244,14 +246,14 @@ impl MalType {
                                     .collect::<Result<Vec<MalType>, MalErr>>()?
                             };
 
-                            let mut new_env = fn_env.borrow().new_into_outer();
-                            new_env.bind_env(&args_mut, &evaluated_args)?;
-
-                            live_ast = fn_ast.deref().clone();
-                            ast = &live_ast;
+                            let new_env =
+                                fn_env.borrow_mut().bind_env(&args_mut, &evaluated_args)?;
 
                             live_env = Rc::new(RefCell::new(new_env));
                             env = &live_env;
+
+                            live_ast = fn_ast.deref().clone();
+                            ast = &live_ast;
 
                             continue 'tco;
                         }
