@@ -25,7 +25,7 @@ pub enum MalType {
     MalFunc {
         ast: Rc<Self>,
         args: MalArgs,
-        env: Rc<RefCell<MalEnv>>,
+        env: Rc<MalEnv>,
     },
     Atom(Rc<RefCell<Self>>),
 }
@@ -67,14 +67,14 @@ impl MalType {
                 args: fn_args,
                 env,
             } => {
-                let new_env = env.clone().borrow().bind_env(fn_args, args)?;
-                ast.eval(&Rc::new(RefCell::new(new_env)))
+                let new_env = env.clone().bind_env(fn_args, args)?;
+                ast.eval(&Rc::new(new_env))
             }
             _ => mal_err!("attempted to apply non function"),
         }
     }
 
-    pub fn eval(&self, env_original: &Rc<RefCell<MalEnv>>) -> MalRet {
+    pub fn eval(&self, env_original: &Rc<MalEnv>) -> MalRet {
         let mut ast = self;
         let mut env = env_original;
 
@@ -82,9 +82,9 @@ impl MalType {
         let mut live_env;
 
         'tco: loop {
-            if env.borrow().get("DEBUG-EVAL").is_some() {
+            if env.get("DEBUG-EVAL").is_some() {
                 println!("EVAL: {ast}");
-                println!("{}", env.borrow())
+                println!("{env}")
             }
 
             match ast {
@@ -111,9 +111,7 @@ impl MalType {
 
                                     match &args[0] {
                                         MalType::List(l1) | MalType::Vec(l1) => {
-                                            live_env = Rc::new(RefCell::new(
-                                                env.clone().borrow().new_into_outer(),
-                                            ));
+                                            live_env = Rc::new(MalEnv::new(Some(env.clone())));
                                             env = &live_env;
 
                                             if l1.len() % 2 != 0 {
@@ -199,7 +197,7 @@ impl MalType {
                                         env: env.clone(),
                                     })
                                 }
-                                _ => match env.borrow().get(&sym) {
+                                _ => match env.get(&sym) {
                                     Some(env_match) => {
                                         let args = args
                                             .iter()
@@ -229,15 +227,23 @@ impl MalType {
                                 .map(|e| e.eval(env))
                                 .collect::<Result<Vec<MalType>, MalErr>>()?;
 
-                            let new_env = fn_env.borrow_mut().bind_env(fn_args, &evaluated_args)?;
+                            let new_env = fn_env.bind_env(fn_args, &evaluated_args)?;
 
-                            live_env = Rc::new(RefCell::new(new_env));
+                            live_env = Rc::new(new_env);
                             env = &live_env;
 
                             live_ast = fn_ast.deref().clone();
                             ast = &live_ast;
 
                             continue 'tco;
+                        }
+                        Self::Builtin(f) => {
+                            let args = list_inner[1..]
+                                .iter()
+                                .map(|i| i.eval(env))
+                                .collect::<Result<Vec<MalType>, MalErr>>()?;
+
+                            return f(args);
                         }
                         _ => return mal_err!("expected symbol or func, found: {}", list_inner[0]),
                     }
@@ -257,8 +263,7 @@ impl MalType {
                     ));
                 }
                 Self::Symbol(s) => {
-                    return match env.clone().borrow().get(s.as_str()) {
-                        Some(Self::Builtin(..)) => Ok(ast.clone()),
+                    return match env.clone().get(s.as_str()) {
                         Some(e) => {
                             live_ast = e.clone();
                             ast = &live_ast;
@@ -273,11 +278,11 @@ impl MalType {
     }
 }
 
-fn set_env_from_vec(l: (&MalType, &MalType), env: &Rc<RefCell<MalEnv>>) -> Result<MalType, MalErr> {
+fn set_env_from_vec(l: (&MalType, &MalType), env: &Rc<MalEnv>) -> Result<MalType, MalErr> {
     match l.0 {
         MalType::Symbol(key) => {
             let val = l.1.eval(env)?;
-            env.borrow_mut().set(key.to_string(), val.clone());
+            env.set(key.to_string(), val.clone());
             Ok(val)
         }
         _ => mal_err!("expected symbol, found {}", l.0),
@@ -286,8 +291,6 @@ fn set_env_from_vec(l: (&MalType, &MalType), env: &Rc<RefCell<MalEnv>>) -> Resul
 
 // ---- eval
 
-// TODO write_with_alt!() macro
-// ":#" for print_readability
 impl Display for MalType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

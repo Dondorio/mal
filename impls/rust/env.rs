@@ -1,5 +1,5 @@
-use itertools::Itertools;
 use std::{
+    cell::RefCell,
     collections::HashMap,
     fmt::{Debug, Display},
     rc::Rc,
@@ -10,68 +10,24 @@ use crate::{mal_err, types::*};
 #[derive(Debug, Clone, PartialEq)]
 pub struct MalEnv {
     outer: Option<Rc<MalEnv>>,
-    data: HashMap<String, MalType>,
-}
-
-pub fn int_op(args: MalArgs, f: fn(f1: i64, f2: i64) -> i64) -> MalRet {
-    if args.len() != 2 {
-        return mal_err!("expected 2 arguments, found '{}'", args.iter().join(" "));
-    }
-
-    let mut args_iter = args.iter();
-
-    let args_tuple = (args_iter.next(), args_iter.next());
-
-    match args_tuple {
-        (Some(MalType::Int(i1)), Some(MalType::Int(i2))) => Ok(MalType::Int(f(*i1, *i2))),
-        _ => mal_err!(
-            "expected int int, found '{}, {}'",
-            args_tuple.0.unwrap_or(&MalType::Nil),
-            args_tuple.1.unwrap_or(&MalType::Nil)
-        ),
-    }
+    data: RefCell<HashMap<String, MalType>>,
 }
 
 #[allow(dead_code)]
 impl MalEnv {
-    pub fn new() -> MalEnv {
-        let mut e = MalEnv {
-            outer: None,
-            data: HashMap::<String, MalType>::new(),
-        };
-
-        e.set(
-            "+".to_string(),
-            MalType::Builtin(|args| int_op(args, |a, b| a + b)),
-        );
-        e.set(
-            "-".to_string(),
-            MalType::Builtin(|args| int_op(args, |a, b| a - b)),
-        );
-        e.set(
-            "*".to_string(),
-            MalType::Builtin(|args| int_op(args, |a, b| a * b)),
-        );
-        e.set(
-            "/".to_string(),
-            MalType::Builtin(|args| int_op(args, |a, b| a / b)),
-        );
-        e
-    }
-
-    pub fn new_into_outer(&self) -> Self {
-        Self {
-            outer: Some(Rc::new(self.clone())),
-            data: HashMap::<String, MalType>::new(),
+    pub fn new(outer: Option<Rc<Self>>) -> MalEnv {
+        MalEnv {
+            outer,
+            data: HashMap::<String, MalType>::new().into(),
         }
     }
 
-    pub fn get(&self, key: &str) -> Option<&MalType> {
+    pub fn get(&self, key: &str) -> Option<MalType> {
         let mut tmp_env = self;
 
         loop {
-            if let Some(val) = tmp_env.data.get(key) {
-                return Some(val);
+            if let Some(val) = tmp_env.data.borrow().get(key) {
+                return Some(val.clone());
             } else if let Some(new_env) = &tmp_env.outer {
                 tmp_env = new_env;
             } else {
@@ -80,12 +36,12 @@ impl MalEnv {
         }
     }
 
-    pub fn set(&mut self, key: String, val: MalType) -> Option<MalType> {
-        self.data.insert(key, val)
+    pub fn set(&self, key: String, val: MalType) -> Option<MalType> {
+        self.data.borrow_mut().insert(key, val)
     }
 
     pub fn bind_env(&self, from: &[MalType], to: &[MalType]) -> Result<Self, MalErr> {
-        let mut env = self.new_into_outer();
+        let env = Self::new(Some(Rc::new(self.clone())));
 
         let mut params = from.to_vec();
         let mut to_mut = to.to_vec();
@@ -106,7 +62,7 @@ impl MalEnv {
                     to.len()
                 );
             }
-            true if from.len() - 1 > to.len() => {
+            true if from.len() - 2 > to.len() => {
                 return mal_err!(
                     "bind failed: expected at least {} arguments, found {}",
                     from.len(),

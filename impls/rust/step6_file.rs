@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use rustyline::Editor;
@@ -15,10 +14,12 @@ use types::*;
 // stolen from the existing impl
 // I have no clue how I would make (eval ...) use the top level REPL_ENV otherwire
 thread_local! {
-    static REPL_ENV: Rc<RefCell<MalEnv>> = Rc::new(RefCell::new(MalEnv::new()));
+    static REPL_ENV: Rc<MalEnv> = Rc::new(MalEnv::new(None));
 }
 
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+
     REPL_ENV.with(|repl_env| {
         let mut rl = Editor::<(), rustyline::history::DefaultHistory>::new().unwrap();
 
@@ -27,7 +28,7 @@ fn main() {
         }
 
         for i in core::ns() {
-            REPL_ENV.with(|e| e.borrow_mut().set(i.0.to_string(), i.1));
+            REPL_ENV.with(|e| e.set(i.0.to_string(), i.1));
         }
 
         reader::read_str(
@@ -37,10 +38,33 @@ fn main() {
         .eval(repl_env)
         .unwrap();
 
-        repl_env.borrow_mut().set(
+        repl_env.set(
             "eval".to_string(),
             MalType::Builtin(|a| REPL_ENV.with(|e| a[0].eval(e))),
         );
+
+        println!("args: {args:?}");
+
+        if args.len() > 1 {
+            reader::read_str(format!("(load-file \"{}\")", args[1]).as_str())
+                .expect("failed to read file")
+                .eval(repl_env)
+                .expect("failed to load file");
+        }
+
+        repl_env.set("*ARGV*".to_string(), MalType::List(vec![]));
+
+        if args.len() > 2 {
+            repl_env.set(
+                "*ARGV*".to_string(),
+                MalType::List(
+                    args[2..]
+                        .iter()
+                        .map(|e| MalType::Symbol(e.to_string()))
+                        .collect(),
+                ),
+            );
+        }
 
         loop {
             let readline = rl.readline("user> ");

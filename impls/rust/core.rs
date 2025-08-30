@@ -201,9 +201,7 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
                     let mut a = args[1..].to_vec();
                     a.insert(1, inner.borrow().clone());
 
-                    println!("a: {}", a.clone().into_iter().join(" "));
                     let result = args[1].apply(&a[1..])?;
-                    println!("res: {result}");
 
                     *inner.borrow_mut() = result.clone();
 

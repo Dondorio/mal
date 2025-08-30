@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use rustyline::Editor;
@@ -16,7 +15,7 @@ fn main() {
         eprintln!("No previous history.");
     }
 
-    let repl_env = &Rc::new(RefCell::new(MalEnv::new()));
+    let repl_env = &Rc::new(MalEnv::new(None));
 
     loop {
         let readline = rl.readline("user> ");

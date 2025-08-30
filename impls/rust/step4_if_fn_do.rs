@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use rustyline::Editor;
@@ -17,10 +16,10 @@ fn main() {
         eprintln!("No previous history.");
     }
 
-    let repl_env = &Rc::new(RefCell::new(MalEnv::new()));
+    let repl_env = &Rc::new(MalEnv::new(None));
 
     for i in core::ns() {
-        repl_env.borrow_mut().set(i.0.to_string(), i.1);
+        repl_env.set(i.0.to_string(), i.1);
     }
 
     loop {
