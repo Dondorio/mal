@@ -27,6 +27,7 @@ pub enum MalType {
         args: MalArgs,
         env: Rc<RefCell<MalEnv>>,
     },
+    Atom(Rc<RefCell<Self>>),
 }
 
 unsafe impl Sync for MalType {}
@@ -48,6 +49,7 @@ impl PartialEq for MalType {
             (Self::Keyword(a), Self::Keyword(b)) => a == b,
             (Self::Builtin(a), Self::Builtin(b)) => std::ptr::fn_addr_eq(*a, *b),
             (Self::MalFunc { .. }, Self::MalFunc { .. }) => false,
+            (Self::Atom(a), Self::Atom(b)) => a == b,
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
     }
@@ -61,13 +63,12 @@ impl MalType {
         let mut ast = self;
         let mut env = env_original;
 
-        // literal black magic I had to steal from the existing rust impl
         let mut live_ast;
         let mut live_env;
 
         'tco: loop {
             if env.borrow().get("DEBUG-EVAL").is_some() {
-                println!("EVAL: {self}");
+                println!("EVAL: {ast}");
                 println!("{}", env.borrow())
             }
 
@@ -366,6 +367,15 @@ impl Display for MalType {
                     )
                 } else {
                     write!(f, "#<function>({}) {ast}", args.iter().join(" "))
+                }
+            }
+            MalType::Atom(a) => {
+                let inner = a.borrow();
+
+                if f.alternate() {
+                    write!(f, "(atom {inner:#})")
+                } else {
+                    write!(f, "(atom {inner})")
                 }
             }
         }

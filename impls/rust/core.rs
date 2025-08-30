@@ -1,4 +1,4 @@
-use std::{fs, mem::discriminant};
+use std::{cell::RefCell, fs, mem::discriminant, rc::Rc};
 
 use crate::{mal_err, reader::read_str, types::*};
 use itertools::Itertools;
@@ -109,6 +109,14 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
                 ))
             }),
         ),
+        (
+            "atom?",
+            lisp_fn_len!(|args where len == 1| {
+                Ok(MalType::Bool(
+                    matches!(args[0], MalType::Atom(..))
+                ))
+            }),
+        ),
         // Io
         (
             "prn",
@@ -133,11 +141,10 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
                 mal_err!("failed to read file")
             }),
         ),
-        // (
-        //     "load-file",
-        //     read_str("(fn* (f) (eval (read-string (str \"(do \" (slurp f) \"\nnil)\"))))")
-        //         .expect("load-file definition parse failed"),
-        // ),
+        (
+            "load-file",
+            read_str("(fn* (f) (eval (read-string (str \"(do \" (slurp f) \"\nnil)\"))))").unwrap(),
+        ),
         // Declare
         ("list", MalType::Builtin(|args| Ok(MalType::List(args)))),
         (
@@ -150,6 +157,12 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
                 Ok(MalType::Str(
                     args.iter().map(|e| format!("{e:#}")).join(" "),
                 ))
+            }),
+        ),
+        (
+            "atom",
+            lisp_fn_len!(|a where len == 1| {
+                Ok(MalType::Atom(Rc::new(RefCell::new(a[0].clone()))))
             }),
         ),
         // Index
@@ -165,6 +178,40 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
                             return mal_err!("expected list or vec, found {}", args[0]);
                         }
                     }))
+            }),
+        ),
+        (
+            "deref",
+            lisp_fn!(|atom: MalType::Atom| Ok(atom.borrow().clone())),
+        ),
+        (
+            "reset!",
+            lisp_fn_len!(|args where len == 2| {
+                if let MalType::Atom(inner) = &args[0] {
+                    *inner.borrow_mut() = args[1].clone();
+                    return Ok(inner.borrow().clone());
+                }
+                mal_err!("expected atom, found {}", args[0])
+            }),
+        ),
+        (
+            "swap!",
+            lisp_fn_len!(|args where len >= 2| {
+                if let (MalType::Atom(inner), MalType::MalFunc { env, .. }) = (args[0].clone(), args[1].clone()) {
+                    let mut a = args[1..].to_vec();
+                    a.insert(1, inner.borrow().clone());
+
+                    println!("a: {}", a.clone().into_iter().join(" "));
+
+                    // borrow mut error in this eval
+                    let result = MalType::List(a).eval(&env)?;
+                    println!("res: {result}");
+
+                    *inner.borrow_mut() = result.clone();
+
+                    return Ok(result);
+                }
+                mal_err!("expected atom, func and other args, found {}", MalType::List(args))
             }),
         ),
     ]
