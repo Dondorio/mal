@@ -84,19 +84,51 @@ impl MalEnv {
         self.data.insert(key, val)
     }
 
-    pub fn bind_env(&mut self, from: &[MalType], to: &[MalType]) -> Result<Self, MalErr> {
+    pub fn bind_env(&self, from: &[MalType], to: &[MalType]) -> Result<Self, MalErr> {
         let mut env = self.new_into_outer();
 
-        if from.len() != to.len() {
-            return mal_err!(
-                "bind failed: both sides must have the same size, {} != {}",
-                from.len(),
-                to.len()
-            );
+        let mut params = from.to_vec();
+        let mut to_mut = to.to_vec();
+
+        let mut is_variadic = false;
+        if from.len() >= 2
+            && let MalType::Symbol(sym) = &from[from.len() - 2]
+            && sym == "&"
+        {
+            is_variadic = true;
         }
 
-        for (i, j) in from.iter().enumerate() {
-            env.set(j.to_string(), to[i].clone());
+        match is_variadic {
+            false if from.len() != to.len() => {
+                return mal_err!(
+                    "bind failed: both sides must have the same size, {} != {}",
+                    from.len(),
+                    to.len()
+                );
+            }
+            true if from.len() - 1 > to.len() => {
+                return mal_err!(
+                    "bind failed: expected at least {} arguments, found {}",
+                    from.len(),
+                    to.len()
+                );
+            }
+            true => {
+                params.remove(from.len() - 2);
+                to_mut = to[..from.len() - 2].to_vec();
+                to_mut.push(MalType::List(
+                    [
+                        [MalType::Symbol("list".to_string())].to_vec(),
+                        to[from.len() - 2..].to_vec(),
+                    ]
+                    .concat(),
+                ));
+            }
+            _ => {}
+        }
+
+        for (i, j) in params.iter().enumerate() {
+            env.set(j.to_string(), to_mut[i].clone());
         }
 
         Ok(env)

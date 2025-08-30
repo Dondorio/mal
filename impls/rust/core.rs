@@ -197,14 +197,12 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
         (
             "swap!",
             lisp_fn_len!(|args where len >= 2| {
-                if let (MalType::Atom(inner), MalType::MalFunc { env, .. }) = (args[0].clone(), args[1].clone()) {
+                if let MalType::Atom(inner) = args[0].clone() {
                     let mut a = args[1..].to_vec();
                     a.insert(1, inner.borrow().clone());
 
                     println!("a: {}", a.clone().into_iter().join(" "));
-
-                    // borrow mut error in this eval
-                    let result = MalType::List(a).eval(&env)?;
+                    let result = args[1].apply(&a[1..])?;
                     println!("res: {result}");
 
                     *inner.borrow_mut() = result.clone();

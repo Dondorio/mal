@@ -59,6 +59,21 @@ impl PartialEq for MalType {
 
 #[allow(dead_code)]
 impl MalType {
+    pub fn apply(&self, args: &[MalType]) -> MalRet {
+        match self {
+            Self::Builtin(f) => f(args.to_vec()),
+            Self::MalFunc {
+                ast,
+                args: fn_args,
+                env,
+            } => {
+                let new_env = env.clone().borrow().bind_env(fn_args, args)?;
+                ast.eval(&Rc::new(RefCell::new(new_env)))
+            }
+            _ => mal_err!("attempted to apply non function"),
+        }
+    }
+
     pub fn eval(&self, env_original: &Rc<RefCell<MalEnv>>) -> MalRet {
         let mut ast = self;
         let mut env = env_original;
@@ -73,14 +88,16 @@ impl MalType {
             }
 
             match ast {
-                Self::List(l) => {
-                    if l.is_empty() {
+                Self::List(list_inner) => {
+                    if list_inner.is_empty() {
                         return Ok(Self::List(Vec::new()));
                     }
 
-                    match l[0].eval(env)? {
+                    let operation = list_inner[0].eval(env)?;
+
+                    match operation {
                         Self::Symbol(sym) => {
-                            let args: &[MalType] = &l[1..];
+                            let args: &[MalType] = &list_inner[1..];
 
                             return match sym.as_str() {
                                 "def!" => set_env_from_vec((&args[0], &args[1]), env),
@@ -203,52 +220,16 @@ impl MalType {
                             };
                         }
                         Self::MalFunc {
-                            ast: fn_ast,
-                            args,
-                            env: fn_env,
+                            ast: ref fn_ast,
+                            args: ref fn_args,
+                            env: ref fn_env,
                         } => {
-                            let mut args_mut = args.clone();
+                            let evaluated_args = list_inner[1..]
+                                .iter()
+                                .map(|e| e.eval(env))
+                                .collect::<Result<Vec<MalType>, MalErr>>()?;
 
-                            let evaluated_args = if args.len() >= 2
-                                && let MalType::Symbol(sym) = &args[args.len() - 2]
-                                && sym == "&"
-                            {
-                                let expected_len = args.len() - 1;
-
-                                if l.len() < expected_len {
-                                    return mal_err!(
-                                        "{fn_ast} expected at least {} arguments, found {}",
-                                        expected_len,
-                                        l.len() - 1
-                                    );
-                                }
-
-                                let mut ar = l[1..expected_len]
-                                    .iter()
-                                    .clone()
-                                    .map(|e| e.eval(env))
-                                    .collect::<Result<Vec<MalType>, MalErr>>()?;
-
-                                // Janky piece of shit code
-                                // It's here so the hew & args return a list
-                                // TODO move the condidionals for & syntax to bind_env
-                                let mut p = vec![MalType::Symbol("list".to_string())];
-                                p.extend_from_slice(&l[expected_len..]);
-
-                                ar.push(MalType::List(p));
-
-                                args_mut.remove(expected_len - 1);
-
-                                ar
-                            } else {
-                                l[1..]
-                                    .iter()
-                                    .map(|e| e.eval(env))
-                                    .collect::<Result<Vec<MalType>, MalErr>>()?
-                            };
-
-                            let new_env =
-                                fn_env.borrow_mut().bind_env(&args_mut, &evaluated_args)?;
+                            let new_env = fn_env.borrow_mut().bind_env(fn_args, &evaluated_args)?;
 
                             live_env = Rc::new(RefCell::new(new_env));
                             env = &live_env;
@@ -258,7 +239,7 @@ impl MalType {
 
                             continue 'tco;
                         }
-                        _ => return mal_err!("expected symbol or func, found: {}", l[0]),
+                        _ => return mal_err!("expected symbol or func, found: {}", list_inner[0]),
                     }
                 }
                 Self::Vec(v) => {
