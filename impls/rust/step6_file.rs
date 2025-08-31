@@ -31,6 +31,11 @@ fn main() {
             REPL_ENV.with(|e| e.set(i.0.to_string(), i.1));
         }
 
+        repl_env.set(
+            "eval".to_string(),
+            MalType::Builtin(|a| REPL_ENV.with(|e| a[0].eval(e))),
+        );
+
         reader::read_str(
             "(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \"\nnil)\")))))",
         )
@@ -38,32 +43,27 @@ fn main() {
         .eval(repl_env)
         .unwrap();
 
-        repl_env.set(
-            "eval".to_string(),
-            MalType::Builtin(|a| REPL_ENV.with(|e| a[0].eval(e))),
-        );
+        // Some rather ugly code
+        if args.len() > 2 {
+            let mut str_args = args[2..]
+                .iter()
+                .map(|e| MalType::Str(e.to_string()))
+                .collect::<Vec<_>>();
 
-        println!("args: {args:?}");
+            str_args.insert(0, MalType::Symbol("list".to_string()));
+
+            repl_env.set("*ARGV*".to_string(), MalType::List(str_args));
+        } else {
+            repl_env.set("*ARGV*".to_string(), MalType::List(vec![]));
+        }
 
         if args.len() > 1 {
             reader::read_str(format!("(load-file \"{}\")", args[1]).as_str())
                 .expect("failed to read file")
                 .eval(repl_env)
                 .expect("failed to load file");
-        }
 
-        repl_env.set("*ARGV*".to_string(), MalType::List(vec![]));
-
-        if args.len() > 2 {
-            repl_env.set(
-                "*ARGV*".to_string(),
-                MalType::List(
-                    args[2..]
-                        .iter()
-                        .map(|e| MalType::Symbol(e.to_string()))
-                        .collect(),
-                ),
-            );
+            return;
         }
 
         loop {

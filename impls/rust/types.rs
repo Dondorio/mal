@@ -2,6 +2,25 @@ use crate::env::*;
 use itertools::Itertools;
 use std::{cell::RefCell, collections::HashMap, fmt::Display, ops::Deref, rc::Rc};
 
+pub type MalRet = Result<MalType, MalErr>;
+pub type MalArgs = Vec<MalType>;
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub enum MalErr {
+    String(String),
+    MalType(MalType),
+}
+
+impl Display for MalErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MalErr::String(s) => write!(f, "{s}"),
+            MalErr::MalType(t) => write!(f, "{t}"),
+        }
+    }
+}
+
 #[macro_export]
 macro_rules! mal_err {
     ($($arg:tt)*) => {
@@ -197,24 +216,9 @@ impl MalType {
                                         env: env.clone(),
                                     })
                                 }
-                                _ => match env.get(&sym) {
-                                    Some(env_match) => {
-                                        let args = args
-                                            .iter()
-                                            .map(|i| i.eval(env))
-                                            .collect::<Result<Vec<MalType>, MalErr>>()?;
-
-                                        match env_match {
-                                            MalType::Builtin(f) => f(args),
-                                            _ => {
-                                                live_ast = env_match.clone();
-                                                ast = &live_ast;
-                                                continue 'tco;
-                                            }
-                                        }
-                                    }
-                                    None => mal_err!("'{sym}' not found"),
-                                },
+                                _ => {
+                                    return mal_err!("expected func, found {}", sym);
+                                }
                             };
                         }
                         Self::MalFunc {
@@ -264,11 +268,7 @@ impl MalType {
                 }
                 Self::Symbol(s) => {
                     return match env.clone().get(s.as_str()) {
-                        Some(e) => {
-                            live_ast = e.clone();
-                            ast = &live_ast;
-                            continue 'tco;
-                        }
+                        Some(e) => Ok(e),
                         None => Ok(ast.clone()),
                     };
                 }
@@ -332,7 +332,10 @@ impl Display for MalType {
                 }
             }
             MalType::HashMap(h) => {
-                let s = h.iter().map(|(key, val)| format!("{key} {val}")).join(" ");
+                let s = h
+                    .iter()
+                    .map(|(key, val)| format!("\"{key}\" {val}"))
+                    .join(" ");
 
                 if f.alternate() {
                     write!(f, "{{{s:#}}}")
@@ -385,22 +388,3 @@ pub fn make_hashmap(seq: Vec<MalType>) -> Result<MalType, MalErr> {
 
     Ok(MalType::HashMap(h))
 }
-
-#[derive(Debug)]
-#[allow(dead_code)]
-pub enum MalErr {
-    String(String),
-    MalType(MalType),
-}
-
-impl Display for MalErr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MalErr::String(s) => write!(f, "{s}"),
-            MalErr::MalType(t) => write!(f, "{t}"),
-        }
-    }
-}
-
-pub type MalRet = Result<MalType, MalErr>;
-pub type MalArgs = Vec<MalType>;
