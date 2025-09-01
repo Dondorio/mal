@@ -45,6 +45,7 @@ pub enum MalType {
         ast: Rc<Self>,
         args: MalArgs,
         env: Rc<MalEnv>,
+        is_macro: bool,
     },
     Atom(Rc<RefCell<Self>>),
 }
@@ -85,6 +86,7 @@ impl MalType {
                 ast,
                 args: fn_args,
                 env,
+                ..
             } => {
                 let new_env = env.clone().bind_env(fn_args, args)?;
                 ast.eval(&Rc::new(new_env))
@@ -213,6 +215,7 @@ impl MalType {
                                 ast,
                                 args,
                                 env: env.clone(),
+                                is_macro: false,
                             })
                         }
                         Self::Symbol(sym) if sym == "quote" => {
@@ -234,6 +237,41 @@ impl MalType {
 
                             quasiquote(&args[0])?.eval(env)
                         }
+                        Self::Symbol(sym) if sym == "defmacro!" => {
+                            return match &args[0] {
+                                MalType::Symbol(key) => {
+                                    let ev = args[1].eval(env)?;
+
+                                    let val = match ev {
+                                        MalType::MalFunc {
+                                            ast: fn_ast,
+                                            args: fn_args,
+                                            env: fn_env,
+                                            ..
+                                        } => {
+                                            println!("fn ast: {fn_ast:?}");
+                                            MalType::MalFunc {
+                                                ast: fn_ast,
+                                                args: fn_args,
+                                                env: fn_env,
+                                                is_macro: true,
+                                            }
+                                        }
+                                        MalType::Builtin(..) => ev,
+                                        _ => {
+                                            return mal_err!(
+                                                "{sym} err: expected func, found {}",
+                                                ev
+                                            );
+                                        }
+                                    };
+
+                                    env.set(key.to_string(), val.clone());
+                                    Ok(val)
+                                }
+                                _ => mal_err!("expected symbol, found {}", args[1]),
+                            };
+                        }
                         _ => {
                             let eval_op = operation.eval(env)?;
                             match eval_op {
@@ -241,8 +279,9 @@ impl MalType {
                                     ast: ref fn_ast,
                                     args: ref fn_args,
                                     env: ref fn_env,
+                                    is_macro: false,
                                 } => {
-                                    let evaluated_args = list_inner[1..]
+                                    let evaluated_args = args
                                         .iter()
                                         .map(|e| e.eval(env))
                                         .collect::<Result<Vec<MalType>, MalErr>>()?;
@@ -254,6 +293,25 @@ impl MalType {
 
                                     live_ast = fn_ast.deref().clone();
                                     ast = &live_ast;
+
+                                    continue 'tco;
+                                }
+                                // Macro
+                                Self::MalFunc {
+                                    args: ref fn_args,
+                                    env: ref fn_env,
+                                    is_macro: true,
+                                    ..
+                                } => {
+                                    let new_env = fn_env.bind_env(fn_args, args)?;
+
+                                    live_env = Rc::new(new_env);
+                                    env = &live_env;
+
+                                    live_ast = eval_op.apply(args)?;
+                                    ast = &live_ast;
+
+                                    println!("applied resulting in {ast};");
 
                                     continue 'tco;
                                 }
@@ -292,7 +350,7 @@ impl MalType {
                 Self::Symbol(s) => {
                     return match env.clone().get(s.as_str()) {
                         Some(e) => Ok(e),
-                        None => mal_err!("symbol {ast} not found"),
+                        None => mal_err!("symbol '{ast}' not found"),
                     };
                 }
                 _ => return Ok(ast.clone()),
@@ -357,8 +415,8 @@ fn quasiquote(ast: &MalType) -> MalRet {
         ])),
         MalType::Symbol(_)
         | MalType::HashMap(_)
-        | MalType::MalFunc { .. }
-        | MalType::Builtin(_) => Ok(MalType::List(vec![
+        | MalType::Builtin(_)
+        | MalType::MalFunc { .. } => Ok(MalType::List(vec![
             MalType::Symbol("quote".to_string()),
             ast.clone(),
         ])),

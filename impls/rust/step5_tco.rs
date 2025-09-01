@@ -22,6 +22,11 @@ fn main() {
         repl_env.set(i.0.to_string(), i.1);
     }
 
+    reader::read_str("(def! not (fn* (a) (if a false true)))")
+        .unwrap()
+        .eval(repl_env)
+        .unwrap();
+
     loop {
         let readline = rl.readline("user> ");
         match readline {

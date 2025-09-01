@@ -88,7 +88,6 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
             lisp_fn!(|a: MalType::Int, b: MalType::Int| Ok(MalType::Bool(a <= b))),
         ),
         // Bool
-        ("not", read_str("(fn* (a) (if a false true))").unwrap()),
         (
             "list?",
             MalType::Builtin(|args| {
@@ -139,10 +138,6 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
             } else {
                 mal_err!("failed to read file")
             }),
-        ),
-        (
-            "load-file",
-            read_str("(fn* (f) (eval (read-string (str \"(do \" (slurp f) \"\nnil)\"))))").unwrap(),
         ),
         // Declare
         ("list", MalType::Builtin(|args| Ok(MalType::List(args)))),
