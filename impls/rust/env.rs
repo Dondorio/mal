@@ -93,12 +93,14 @@ impl MalEnv {
 
 impl Display for MalEnv {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let outer_str = match self.outer.is_some() {
-            false => "none".to_string(),
-            true => self.outer.clone().unwrap().to_string(),
-        };
+        // let outer_str = match self.outer {
+        //     None => "none".to_string(),
+        //     Some(ref x) => x.to_string(),
+        // };
+        //
+        // let out: String = format!("outer: {},\ndata: {:?}", outer_str, self.data);
 
-        let out: String = format!("outer: {},\ndata: {:?}", outer_str, self.data);
+        let out: String = format!("data: {:?}", self.data);
 
         writeln!(f, "{{ {out}}}")
     }

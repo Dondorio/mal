@@ -132,7 +132,6 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
                 Ok(MalType::Nil)
             }),
         ),
-        ("read-string", lisp_fn!(|s: MalType::Str| read_str(s))),
         (
             "slurp",
             lisp_fn!(|s: MalType::Str| if let Ok(str) = fs::read_to_string(s) {
@@ -165,8 +164,19 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
                 Ok(MalType::Atom(Rc::new(RefCell::new(a[0].clone()))))
             }),
         ),
+        (
+            "vec",
+            lisp_fn_len!(|args where len == 1|{
+                if let MalType::List(v) | MalType::Vec(v) = &args[0]{
+                    return Ok(MalType::Vec(v.clone()))
+                }
+
+                mal_err!("expected list or vec, found {}", args[0])
+            }),
+        ),
         // Index
         // Do
+        ("read-string", lisp_fn!(|s: MalType::Str| read_str(s))),
         (
             "count",
             lisp_fn_len!(|args where len == 1| {
@@ -208,6 +218,34 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
                     return Ok(result);
                 }
                 mal_err!("expected atom, func and other args, found {}", MalType::List(args))
+            }),
+        ),
+        (
+            "cons",
+            lisp_fn_len!(|args where len == 2| {
+                if let MalType::List(v) | MalType::Vec(v) = &args[1] {
+                    let mut new_list = v.clone();
+                    new_list.insert(0, args[0].clone());
+
+                    return Ok(MalType::List(new_list));
+                }
+                mal_err!("expected second argument to be a list, found {}", args[1])
+            }),
+        ),
+        (
+            "concat",
+            MalType::Builtin(|args| {
+                let mut new_list = vec![];
+
+                for i in args {
+                    if let MalType::List(v) | MalType::Vec(v) = i {
+                        new_list.extend(v.clone());
+                    } else {
+                        return mal_err!("expected all arguments to be of type list or vec");
+                    }
+                }
+
+                Ok(MalType::List(new_list))
             }),
         ),
     ]

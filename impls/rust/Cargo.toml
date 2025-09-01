@@ -37,3 +37,7 @@ path = "step5_tco.rs"
 [[bin]]
 name = "step6_file"
 path = "step6_file.rs"
+
+[[bin]]
+name = "step7_quote"
+path = "step7_quote.rs"
