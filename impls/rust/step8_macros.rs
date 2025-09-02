@@ -48,6 +48,13 @@ fn main() {
             .eval(repl_env)
             .unwrap();
 
+        reader::read_str(
+    "(defmacro! cond (fn* (& xs) (if (> (count xs) 0) (list 'if (first xs) (if (> (count xs) 1) (nth xs 1) (throw \"odd number of forms to cond\")) (cons 'cond (rest (rest xs)))))))"
+        )
+            .unwrap()
+            .eval(repl_env)
+            .unwrap();
+
         // Some rather ugly code
         if args.len() > 2 {
             let mut str_args = args[2..]

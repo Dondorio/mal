@@ -214,6 +214,7 @@ impl MalType {
                             Ok(MalType::MalFunc {
                                 ast,
                                 args,
+                                // TODO make env in MalFunc optional
                                 env: env.clone(),
                                 is_macro: false,
                             })
@@ -243,17 +244,11 @@ impl MalType {
                                     let ev = args[1].eval(env)?;
 
                                     let val = match ev {
-                                        MalType::MalFunc {
-                                            ast: fn_ast,
-                                            args: fn_args,
-                                            env: fn_env,
-                                            ..
-                                        } => {
-                                            println!("fn ast: {fn_ast:?}");
+                                        MalType::MalFunc { ast, args, env, .. } => {
                                             MalType::MalFunc {
-                                                ast: fn_ast,
-                                                args: fn_args,
-                                                env: fn_env,
+                                                ast,
+                                                args,
+                                                env,
                                                 is_macro: true,
                                             }
                                         }
@@ -299,19 +294,17 @@ impl MalType {
                                 // Macro
                                 Self::MalFunc {
                                     args: ref fn_args,
-                                    env: ref fn_env,
+                                    // env: ref fn_env,
                                     is_macro: true,
                                     ..
                                 } => {
-                                    let new_env = fn_env.bind_env(fn_args, args)?;
+                                    let new_env = env.bind_env(fn_args, args)?;
 
                                     live_env = Rc::new(new_env);
                                     env = &live_env;
 
                                     live_ast = eval_op.apply(args)?;
                                     ast = &live_ast;
-
-                                    println!("applied resulting in {ast};");
 
                                     continue 'tco;
                                 }

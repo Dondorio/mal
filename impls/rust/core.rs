@@ -116,6 +116,14 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
                 ))
             }),
         ),
+        (
+            "macro?",
+            lisp_fn_len!(|args where len == 1| {
+                Ok(MalType::Bool(
+                    matches!(&args[0], MalType::MalFunc { is_macro: true, .. })
+                ))
+            }),
+        ),
         // Io
         (
             "prn",
@@ -161,7 +169,7 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
         ),
         (
             "vec",
-            lisp_fn_len!(|args where len == 1|{
+            lisp_fn_len!(|args where len == 1| {
                 if let MalType::List(v) | MalType::Vec(v) = &args[0]{
                     return Ok(MalType::Vec(v.clone()))
                 }
@@ -170,6 +178,53 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
             }),
         ),
         // Index
+        (
+            "nth",
+            lisp_fn_len!(|args where len == 2| {
+                if let MalType::List(v) | MalType::Vec(v) = &args[0]
+                    && let MalType::Int(i) = &args[1]
+                {
+                    return match v.get(*i as usize) {
+                        Some(e) => Ok(e.clone()),
+                        None => mal_err!("nth err: out of bounds")
+                    }
+                }
+
+                mal_err!("expected list or vec + int, found {} + {}", args[0], args[1])
+            }),
+        ),
+        (
+            "first",
+            lisp_fn_len!(|args where len == 1| {
+                return match &args[0] {
+                    MalType::List(v) | MalType::Vec(v) => {
+                        match v.first() {
+                            Some(e) => Ok(e.clone()),
+                            None => Ok(MalType::Nil),
+                        }
+                    },
+                    MalType::Nil => Ok(MalType::Nil),
+                    _ => mal_err!("expected list or vec, found {}", args[0]),
+                }
+            }),
+        ),
+        (
+            "rest",
+            lisp_fn_len!(|args where len == 1| {
+                match &args[0] {
+                    MalType::List(v) | MalType::Vec(v) =>
+                    {
+                        if v.is_empty() {
+                            return Ok(MalType::List(vec![]));
+                        }
+
+                        return Ok(MalType::List(v[1..].to_vec()))
+                    },
+                    MalType::Nil => Ok(MalType::List(vec![])),
+                    _ => mal_err!("expected list or vec, found {}", args[0]),
+                }
+            }),
+        ),
         // Do
         ("read-string", lisp_fn!(|s: MalType::Str| read_str(s))),
         (
@@ -243,5 +298,6 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
                 Ok(MalType::List(new_list))
             }),
         ),
+        ("throw", MalType::Builtin(|_| Ok(MalType::Nil))),
     ]
 }

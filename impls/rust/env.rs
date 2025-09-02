@@ -72,13 +72,7 @@ impl MalEnv {
             true => {
                 params.remove(from.len() - 2);
                 to_mut = to[..from.len() - 2].to_vec();
-                to_mut.push(MalType::List(
-                    [
-                        [MalType::Symbol("list".to_string())].to_vec(),
-                        to[from.len() - 2..].to_vec(),
-                    ]
-                    .concat(),
-                ));
+                to_mut.push(MalType::List(to[from.len() - 2..].to_vec()));
             }
             _ => {}
         }
