@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fs, mem::discriminant, rc::Rc};
+use std::{cell::RefCell, fs, rc::Rc};
 
 use crate::{mal_err, reader::read_str, types::*};
 use itertools::Itertools;
@@ -90,11 +90,7 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
         // Bool
         (
             "list?",
-            MalType::Builtin(|args| {
-                Ok(MalType::Bool(
-                    discriminant(&MalType::List(vec![])) == discriminant(&args[0]),
-                ))
-            }),
+            MalType::Builtin(|args| Ok(MalType::Bool(matches!(args[0], MalType::List(..))))),
         ),
         (
             "empty?",
@@ -121,6 +117,38 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
             lisp_fn_len!(|args where len == 1| {
                 Ok(MalType::Bool(
                     matches!(&args[0], MalType::MalFunc { is_macro: true, .. })
+                ))
+            }),
+        ),
+        (
+            "nil?",
+            lisp_fn_len!(|args where len == 1| {
+                Ok(MalType::Bool(
+                    matches!(&args[0], MalType::Nil)
+                ))
+            }),
+        ),
+        (
+            "true?",
+            lisp_fn_len!(|args where len == 1| {
+                Ok(MalType::Bool(
+                    matches!(&args[0], MalType::Bool(true))
+                ))
+            }),
+        ),
+        (
+            "false?",
+            lisp_fn_len!(|args where len == 1| {
+                Ok(MalType::Bool(
+                    matches!(&args[0], MalType::Bool(false))
+                ))
+            }),
+        ),
+        (
+            "symbol?",
+            lisp_fn_len!(|args where len == 1| {
+                Ok(MalType::Bool(
+                    matches!(&args[0], MalType::Symbol(_))
                 ))
             }),
         ),
@@ -182,7 +210,7 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
             "nth",
             lisp_fn_len!(|args where len == 2| {
                 if let MalType::List(v) | MalType::Vec(v) = &args[0]
-                    && let MalType::Int(i) = &args[1]
+                && let MalType::Int(i) = &args[1]
                 {
                     return match v.get(*i as usize) {
                         Some(e) => Ok(e.clone()),
@@ -298,6 +326,34 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
                 Ok(MalType::List(new_list))
             }),
         ),
-        ("throw", MalType::Builtin(|_| Ok(MalType::Nil))),
+        (
+            "throw",
+            lisp_fn_len!(|args where len == 1| {
+                Err(MalErr::Throw(args[0].clone()))
+            }),
+        ),
+        (
+            "apply",
+            lisp_fn_len!(|args where len >= 2| {
+                if let MalType::List(v) | MalType::Vec(v) = args.last().unwrap() {
+                    let a = [&args[1..args.len() - 1], v].concat();
+
+                    args[0].apply(&a)
+                }
+                else {
+                    mal_err!("expected last argument to be of type list or vec")
+                }
+            }),
+        ),
+        (
+            "map",
+            lisp_fn_len!(|args where len == 2| {
+                if let MalType::List(v) | MalType::Vec(v) = &args[1] {
+                    let res = v.iter().map(|i| args[0].apply(&[i.clone()])).collect::<Result<Vec<MalType>, MalErr>>()?;
+                    return Ok(MalType::List(res));
+                }
+                mal_err!("expected second argument to be of type list or vec")
+            }),
+        ),
     ]
 }

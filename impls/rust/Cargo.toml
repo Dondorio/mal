@@ -45,3 +45,7 @@ path = "step7_quote.rs"
 [[bin]]
 name = "step8_macros"
 path = "step8_macros.rs"
+
+[[bin]]
+name = "step9_try"
+path = "step9_try.rs"

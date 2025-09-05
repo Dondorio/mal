@@ -8,15 +8,15 @@ pub type MalArgs = Vec<MalType>;
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum MalErr {
-    String(String),
-    MalType(MalType),
+    ErrStr(String),
+    Throw(MalType),
 }
 
 impl Display for MalErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MalErr::String(s) => write!(f, "{s}"),
-            MalErr::MalType(t) => write!(f, "{t}"),
+            MalErr::ErrStr(s) => write!(f, "{s}"),
+            MalErr::Throw(t) => write!(f, "ThrownException: {t:#}"),
         }
     }
 }
@@ -24,7 +24,7 @@ impl Display for MalErr {
 #[macro_export]
 macro_rules! mal_err {
     ($($arg:tt)*) => {
-        Err(MalErr::String(format!($($arg)*)))
+        Err(MalErr::ErrStr(format!($($arg)*)))
     };
 }
 
@@ -144,7 +144,7 @@ impl MalType {
 
                                     for i in l1.iter().tuples::<(_, _)>() {
                                         set_env_from_vec(i, env).map_err(|e| {
-                                            MalErr::String(format!("let* failed: {e}"))
+                                            MalErr::ErrStr(format!("let* failed: {e}"))
                                         })?;
                                     }
 
@@ -267,6 +267,51 @@ impl MalType {
                                 _ => mal_err!("expected symbol, found {}", args[1]),
                             };
                         }
+                        Self::Symbol(sym) if sym == "try*" => {
+                            if args.len() != 2 {
+                                return mal_err!(
+                                    "{sym} err: expected 2 args, found {}",
+                                    args.len()
+                                );
+                            }
+
+                            if let Self::List(ref l0) = args[1]
+                                && l0.len() == 3
+                                && let Self::Symbol(ref catch_sym) = l0[0]
+                                && catch_sym == "catch*"
+                            {
+                                match args[0].eval(env_original) {
+                                    ok @ Ok(_) => return ok,
+                                    Err(err) => {
+                                        let e = match err {
+                                            MalErr::Throw(mal_type) => mal_type,
+                                            MalErr::ErrStr(str) => MalType::Str(str),
+                                        };
+
+                                        let key = match l0[1] {
+                                            Self::Symbol(ref key_sym) => key_sym,
+                                            _ => {
+                                                return mal_err!(
+                                                    "{sym} err: expected 1st arg to be of type symbol"
+                                                );
+                                            }
+                                        };
+
+                                        let new_env = MalEnv::new(Some(env.clone()));
+                                        new_env.set(key.to_string(), e);
+
+                                        live_env = Rc::new(new_env);
+                                        env = &live_env;
+
+                                        ast = &l0[2];
+
+                                        continue 'tco;
+                                    }
+                                }
+                            }
+
+                            mal_err!("{sym} err: expected catch block, found '{:#}'", args[0])
+                        }
                         _ => {
                             let eval_op = operation.eval(env)?;
                             match eval_op {
@@ -343,7 +388,7 @@ impl MalType {
                 Self::Symbol(s) => {
                     return match env.clone().get(s.as_str()) {
                         Some(e) => Ok(e),
-                        None => mal_err!("symbol '{ast}' not found"),
+                        None => mal_err!("'{ast}' not found"),
                     };
                 }
                 _ => return Ok(ast.clone()),
@@ -519,7 +564,7 @@ pub fn make_hashmap(seq: Vec<MalType>) -> Result<MalType, MalErr> {
         .map(|(key, val)| match key {
             MalType::Str(_) => Ok((key.to_string(), val.clone())),
             MalType::Keyword(_) => Ok((key.to_string(), val.clone())),
-            _ => Err(MalErr::String(
+            _ => Err(MalErr::ErrStr(
                 "hashmap key isn't a string or keyword".to_string(),
             )),
         })
