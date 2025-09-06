@@ -268,9 +268,15 @@ impl MalType {
                             };
                         }
                         Self::Symbol(sym) if sym == "try*" => {
+                            if args.len() == 1 {
+                                ast = &args[0];
+
+                                continue 'tco;
+                            }
+
                             if args.len() != 2 {
                                 return mal_err!(
-                                    "{sym} err: expected 2 args, found {}",
+                                    "{sym} err: expected 1 or 2 args, found {}",
                                     args.len()
                                 );
                             }
@@ -518,14 +524,16 @@ impl Display for MalType {
             MalType::HashMap(h) => {
                 let s = h
                     .iter()
-                    .map(|(key, val)| format!("\"{key}\" {val}"))
+                    .map(|(key, val)| {
+                        if f.alternate() {
+                            format!("{:#} {val:#}", from_hashmap_key(key))
+                        } else {
+                            format!("{:#} {val}", from_hashmap_key(key))
+                        }
+                    })
                     .join(" ");
 
-                if f.alternate() {
-                    write!(f, "{{{s:#}}}")
-                } else {
-                    write!(f, "{{{s}}}")
-                }
+                write!(f, "{{{s:#}}}")
             }
             MalType::Keyword(k) => write!(f, ":{k}"),
             MalType::Builtin(..) => write!(f, "builtin"),
@@ -553,6 +561,24 @@ impl Display for MalType {
     }
 }
 
+pub fn to_hashmap_key(from: &MalType) -> Result<String, MalErr> {
+    match from {
+        MalType::Keyword(k) => Ok(format!("\u{29e}{k}")),
+        MalType::Str(str) => Ok(str.to_string()),
+        _ => {
+            mal_err!("failed to construct hashmap key: expected keyword or string, found {from:#}")
+        }
+    }
+}
+
+pub fn from_hashmap_key(key: &str) -> MalType {
+    match key.chars().next() {
+        // the unicode symbol is 2 bytes long, hence the [2..]
+        Some('\u{29e}') => MalType::Keyword(key[2..].to_string()),
+        _ => MalType::Str(key.to_string()),
+    }
+}
+
 pub fn make_hashmap(seq: Vec<MalType>) -> Result<MalType, MalErr> {
     if seq.len() % 2 != 0 {
         return mal_err!("missing hashmap value or key");
@@ -561,13 +587,7 @@ pub fn make_hashmap(seq: Vec<MalType>) -> Result<MalType, MalErr> {
     let h = seq
         .iter()
         .tuples()
-        .map(|(key, val)| match key {
-            MalType::Str(_) => Ok((key.to_string(), val.clone())),
-            MalType::Keyword(_) => Ok((key.to_string(), val.clone())),
-            _ => Err(MalErr::ErrStr(
-                "hashmap key isn't a string or keyword".to_string(),
-            )),
-        })
+        .map(|(key, val)| Ok((to_hashmap_key(key)?, val.clone())))
         .collect::<Result<HashMap<_, _>, MalErr>>()?;
 
     Ok(MalType::HashMap(h))

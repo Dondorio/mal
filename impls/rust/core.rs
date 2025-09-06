@@ -90,11 +90,19 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
         // Bool
         (
             "list?",
-            MalType::Builtin(|args| Ok(MalType::Bool(matches!(args[0], MalType::List(..))))),
+            lisp_fn_len!(|args where len == 1| Ok(MalType::Bool(matches!(args[0], MalType::List(..))))),
+        ),
+        (
+            "vector?",
+            lisp_fn_len!(|args where len == 1| Ok(MalType::Bool(matches!(args[0], MalType::Vec(..))))),
+        ),
+        (
+            "sequential?",
+            lisp_fn_len!(|args where len == 1| Ok(MalType::Bool(matches!(args[0], MalType::List(..) | MalType::Vec(..))))),
         ),
         (
             "empty?",
-            MalType::Builtin(|args| {
+            lisp_fn_len!(|args where len == 1| {
                 Ok(MalType::Bool(
                     if let MalType::List(a) | MalType::Vec(a) = &args[0] {
                         a.is_empty()
@@ -148,8 +156,35 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
             "symbol?",
             lisp_fn_len!(|args where len == 1| {
                 Ok(MalType::Bool(
-                    matches!(&args[0], MalType::Symbol(_))
+                    matches!(&args[0], MalType::Symbol(..))
                 ))
+            }),
+        ),
+        (
+            "keyword?",
+            lisp_fn_len!(|args where len == 1| {
+                Ok(MalType::Bool(
+                    matches!(&args[0], MalType::Keyword(..))
+                ))
+            }),
+        ),
+        (
+            "map?",
+            lisp_fn_len!(|args where len == 1| {
+                Ok(MalType::Bool(
+                    matches!(&args[0], MalType::HashMap(..))
+                ))
+            }),
+        ),
+        (
+            "contains?",
+            lisp_fn_len!(|args where len == 2| {
+                if let MalType::HashMap(hm) = &args[0]
+                {
+                    return Ok(MalType::Bool(hm.contains_key(&to_hashmap_key(&args[1])?)));
+                }
+
+                mal_err!("expected first arg to be of type hashmap")
             }),
         ),
         // Io
@@ -205,6 +240,23 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
                 mal_err!("expected list or vec, found {}", args[0])
             }),
         ),
+        (
+            "symbol",
+            lisp_fn!(|str: MalType::Str| Ok(MalType::Symbol(str.to_string()))),
+        ),
+        (
+            "keyword",
+            lisp_fn_len!(|args where len == 1| {
+                match args[0] {
+                    MalType::Str(ref str) => Ok(MalType::Keyword(str.clone())),
+                    MalType::Keyword(_) => Ok(args[0].clone()),
+                    _ => mal_err!("expected str or keyword, found {:#}", args[0]),
+                }
+
+            }),
+        ),
+        ("vector", MalType::Builtin(|args| Ok(MalType::Vec(args)))),
+        ("hash-map", MalType::Builtin(make_hashmap)),
         // Index
         (
             "nth",
@@ -354,6 +406,69 @@ pub fn ns() -> Vec<(&'static str, MalType)> {
                 }
                 mal_err!("expected second argument to be of type list or vec")
             }),
+        ),
+        (
+            "assoc",
+            lisp_fn_len!(|args where len >= 1| {
+            match &args[0] {
+                MalType::HashMap(hash_map) => {
+                    if args[1..].len() % 2 != 0 {
+                        return mal_err!("missing hashmap value or key");
+                    }
+
+                    let mut hm = hash_map.clone();
+
+                    for (key, val) in args[1..].iter().tuples() {
+                        hm.insert(to_hashmap_key(key)? , val.clone());
+                    }
+
+                    Ok(MalType::HashMap(hm))
+                }
+                _ => mal_err!("expected hashmap, found {}", args[0])
+            }
+            }),
+        ),
+        (
+            "dissoc",
+            lisp_fn_len!(|args where len >= 1| {
+            match &args[0] {
+                MalType::HashMap(hash_map) => {
+                    let mut hm = hash_map.clone();
+
+                    for key in args[1..].iter() {
+                        hm.remove(&to_hashmap_key(key)?);
+                    }
+
+                    Ok(MalType::HashMap(hm))
+                }
+                _ => mal_err!("expected hashmap, found {}", args[0])
+            }
+            }),
+        ),
+        (
+            "get",
+            lisp_fn_len!(|args where len == 2| {
+                match &args[0] {
+                    MalType::HashMap(hash_map) => {
+                        match hash_map.get(&to_hashmap_key(&args[1])?) {
+                            Some(result) => Ok(result.clone()),
+                            None => Ok(MalType::Nil),
+                        }
+                    }
+                    MalType::Nil => Ok(MalType::Nil),
+                    _ => mal_err!("expected hashmap, found {:#}", args[0]),
+                }
+            }),
+        ),
+        (
+            "keys",
+            lisp_fn!(|hm: MalType::HashMap| Ok(MalType::List(
+                hm.keys().map(|k| from_hashmap_key(k)).collect()
+            ))),
+        ),
+        (
+            "vals",
+            lisp_fn!(|hm: MalType::HashMap| Ok(MalType::List(hm.values().cloned().collect()))),
         ),
     ]
 }
