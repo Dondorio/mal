@@ -43,19 +43,16 @@ fn main() {
         .eval(repl_env)
         .unwrap();
 
-        // Some rather ugly code
-        if args.len() > 2 {
-            let mut str_args = args[2..]
+        let str_args = if args.len() > 2 {
+            args[2..]
                 .iter()
                 .map(|e| MalType::Str(e.to_string()))
-                .collect::<Vec<_>>();
-
-            str_args.insert(0, MalType::Symbol("list".to_string()));
-
-            repl_env.set("*ARGV*".to_string(), MalType::List(str_args));
+                .collect::<Vec<_>>()
         } else {
-            repl_env.set("*ARGV*".to_string(), MalType::List(vec![]));
-        }
+            vec![]
+        };
+
+        repl_env.set("*ARGV*".to_string(), MalType::List(str_args));
 
         if args.len() > 1 {
             reader::read_str(format!("(load-file \"{}\")", args[1]).as_str())

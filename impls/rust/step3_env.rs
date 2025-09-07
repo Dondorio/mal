@@ -3,6 +3,7 @@ use std::rc::Rc;
 use rustyline::Editor;
 use rustyline::error::ReadlineError;
 
+mod core;
 mod env;
 mod reader;
 mod types;
@@ -16,6 +17,10 @@ fn main() {
     }
 
     let repl_env = &Rc::new(MalEnv::new(None));
+
+    for i in core::ns() {
+        repl_env.set(i.0.to_string(), i.1);
+    }
 
     loop {
         let readline = rl.readline("user> ");

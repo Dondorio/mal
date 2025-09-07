@@ -20,7 +20,7 @@ fn main() {
                 if !line.is_empty() {
                     let form = reader::read_str(&line);
                     match form {
-                        Ok(f) => println!("{f}"),
+                        Ok(f) => println!("{f:#}"),
                         Err(e) => eprintln!("Err: {e:?}"),
                     }
                 }
