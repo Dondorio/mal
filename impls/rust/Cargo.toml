@@ -49,3 +49,7 @@ path = "step8_macros.rs"
 [[bin]]
 name = "step9_try"
 path = "step9_try.rs"
+
+[[bin]]
+name = "stepA_mal"
+path = "stepA_mal.rs"

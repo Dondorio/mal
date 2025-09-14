@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use regex::Regex;
 
-use crate::{mal_err, types::*};
+use crate::{mal_err, mal_list, mal_vec, types::*};
 
 pub struct Reader {
     tokens: Vec<String>,
@@ -54,7 +54,7 @@ impl Reader {
         };
 
         fn symbol(r: &mut Reader, n: &str) -> Result<MalType, MalErr> {
-            Ok(MalType::List(vec![
+            Ok(mal_list!(vec![
                 MalType::Symbol(n.to_string()),
                 r.read_form()?,
             ]))
@@ -80,7 +80,7 @@ impl Reader {
             "^" => {
                 self.next();
                 let meta = self.read_form()?;
-                Ok(MalType::List(vec![
+                Ok(mal_list!(vec![
                     MalType::Symbol("with-meta".to_string()),
                     self.read_form()?,
                     meta,
@@ -116,8 +116,8 @@ impl Reader {
             seq.push(self.read_form()?);
         }
         match closing {
-            ")" => Ok(MalType::List(seq)),
-            "]" => Ok(MalType::Vec(seq)),
+            ")" => Ok(mal_list!(seq)),
+            "]" => Ok(mal_vec!(seq)),
             "}" => make_hashmap(seq),
             _ => mal_err!("unknown symbol: {closing}"),
         }

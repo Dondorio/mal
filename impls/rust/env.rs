@@ -1,3 +1,5 @@
+use colored::Colorize;
+use itertools::Itertools;
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -5,7 +7,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::{mal_err, types::*};
+use crate::{mal_err, mal_list, types::*};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MalEnv {
@@ -72,7 +74,7 @@ impl MalEnv {
             true => {
                 params.remove(from.len() - 2);
                 to_mut = to[..from.len() - 2].to_vec();
-                to_mut.push(MalType::List(to[from.len() - 2..].to_vec()));
+                to_mut.push(mal_list!(to[from.len() - 2..].to_vec()));
             }
             _ => {}
         }
@@ -87,8 +89,21 @@ impl MalEnv {
 
 impl Display for MalEnv {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let out: String = format!("data: {:?}", self.data);
+        let out = match self.outer {
+            Some(ref outer) => {
+                let data = &self
+                    .data
+                    .borrow()
+                    .iter()
+                    .map(|(key, val)| format!("{}: {:#}", key.on_white().black(), val))
+                    .join(", ");
 
-        writeln!(f, "{{ {out}}}")
+                &format!("{{{outer} {} {}}}", "|>".yellow(), data)
+            }
+            // don't display outer most env
+            None => "{ .. }",
+        };
+
+        write!(f, "{out}")
     }
 }

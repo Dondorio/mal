@@ -33,7 +33,7 @@ fn main() {
 
         repl_env.set(
             "eval".to_string(),
-            MalType::Builtin(|a| REPL_ENV.with(|e| a[0].eval(e))),
+            MalType::Builtin(|a| REPL_ENV.with(|e| a[0].eval(e)), None),
         );
 
         reader::read_str(
@@ -64,7 +64,7 @@ fn main() {
             vec![]
         };
 
-        repl_env.set("*ARGV*".to_string(), MalType::List(str_args));
+        repl_env.set("*ARGV*".to_string(), mal_list!(str_args));
 
         if args.len() > 1 {
             reader::read_str(format!("(load-file \"{}\")", args[1]).as_str())

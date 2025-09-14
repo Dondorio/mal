@@ -1,4 +1,5 @@
 use crate::env::*;
+use colored::Colorize;
 use itertools::Itertools;
 use std::{cell::RefCell, collections::HashMap, fmt::Display, ops::Deref, rc::Rc};
 
@@ -28,6 +29,20 @@ macro_rules! mal_err {
     };
 }
 
+#[macro_export]
+macro_rules! mal_list {
+    ($arg:expr) => {
+        MalType::List($arg, None)
+    };
+}
+
+#[macro_export]
+macro_rules! mal_vec {
+    ($arg:expr) => {
+        MalType::Vec($arg, None)
+    };
+}
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum MalType {
@@ -36,21 +51,21 @@ pub enum MalType {
     Symbol(String),
     Str(String),
     Bool(bool),
-    List(Vec<MalType>),
-    Vec(Vec<MalType>),
-    HashMap(HashMap<String, MalType>),
+    // second field is for meta
+    List(Vec<MalType>, Option<Rc<MalType>>),
+    Vec(Vec<MalType>, Option<Rc<MalType>>),
+    HashMap(HashMap<String, MalType>, Option<Rc<MalType>>),
     Keyword(String),
-    Builtin(fn(Vec<MalType>) -> MalRet),
+    Builtin(fn(Vec<MalType>) -> MalRet, Option<Rc<MalType>>),
     MalFunc {
         ast: Rc<Self>,
         args: MalArgs,
         env: Rc<MalEnv>,
         is_macro: bool,
+        meta: Option<Rc<MalType>>,
     },
     Atom(Rc<RefCell<Self>>),
 }
-
-unsafe impl Sync for MalType {}
 
 impl PartialEq for MalType {
     fn eq(&self, other: &Self) -> bool {
@@ -60,14 +75,14 @@ impl PartialEq for MalType {
             (Self::Str(a), Self::Str(b)) => a == b,
             (Self::Bool(a), Self::Bool(b)) => a == b,
             // ----- list/vec -----
-            (Self::List(a), Self::List(b))
-            | (Self::Vec(a), Self::Vec(b))
-            | (Self::List(a), Self::Vec(b))
-            | (Self::Vec(a), Self::List(b)) => a == b,
+            (Self::List(a, ..), Self::List(b, ..))
+            | (Self::Vec(a, ..), Self::Vec(b, ..))
+            | (Self::List(a, ..), Self::Vec(b, ..))
+            | (Self::Vec(a, ..), Self::List(b, ..)) => a == b,
             // ----- list/vec
-            (Self::HashMap(a), Self::HashMap(b)) => a == b,
+            (Self::HashMap(a, ..), Self::HashMap(b, ..)) => a == b,
             (Self::Keyword(a), Self::Keyword(b)) => a == b,
-            (Self::Builtin(a), Self::Builtin(b)) => std::ptr::fn_addr_eq(*a, *b),
+            (Self::Builtin(a, ..), Self::Builtin(b, ..)) => std::ptr::fn_addr_eq(*a, *b),
             (Self::MalFunc { .. }, Self::MalFunc { .. }) => false,
             (Self::Atom(a), Self::Atom(b)) => a == b,
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
@@ -81,7 +96,7 @@ impl PartialEq for MalType {
 impl MalType {
     pub fn apply(&self, args: &[MalType]) -> MalRet {
         match self {
-            Self::Builtin(f) => f(args.to_vec()),
+            Self::Builtin(f, ..) => f(args.to_vec()),
             Self::MalFunc {
                 ast,
                 args: fn_args,
@@ -104,13 +119,19 @@ impl MalType {
 
         'tco: loop {
             if env.get("DEBUG-EVAL").is_some() {
-                println!("EVAL: {ast}");
+                println!(
+                    "{}: {} {}\t{}",
+                    "EVAL".on_bright_black(),
+                    ast.to_string().blue(),
+                    "with env:".yellow(),
+                    env.to_string().green()
+                );
             }
 
             match ast {
-                Self::List(list_inner) => {
+                Self::List(list_inner, ..) => {
                     if list_inner.is_empty() {
-                        return Ok(Self::List(Vec::new()));
+                        return Ok(mal_list!(Vec::new()));
                     }
 
                     let operation = list_inner[0].clone();
@@ -134,7 +155,7 @@ impl MalType {
                             }
 
                             match &args[0] {
-                                MalType::List(l1) | MalType::Vec(l1) => {
+                                MalType::List(l1, ..) | MalType::Vec(l1, ..) => {
                                     live_env = Rc::new(MalEnv::new(Some(env.clone())));
                                     env = &live_env;
 
@@ -143,9 +164,7 @@ impl MalType {
                                     }
 
                                     for i in l1.iter().tuples::<(_, _)>() {
-                                        set_env_from_vec(i, env).map_err(|e| {
-                                            MalErr::ErrStr(format!("let* failed: {e}"))
-                                        })?;
+                                        set_env_from_vec(i, env)?;
                                     }
 
                                     ast = &args[1];
@@ -206,7 +225,7 @@ impl MalType {
 
                             let ast = Rc::new(args[1].clone());
                             let args = match &args[0] {
-                                        MalType::List(l) | MalType::Vec(l) => l,
+                                        MalType::List(l, ..) | MalType::Vec(l,..) => l,
                                         _ => return mal_err!("{sym} err: expected first argument to be a list or vec of args"),
                                     }
                                         .clone();
@@ -217,6 +236,7 @@ impl MalType {
                                 // TODO make env in MalFunc optional
                                 env: env.clone(),
                                 is_macro: false,
+                                meta: None,
                             })
                         }
                         Self::Symbol(sym) if sym == "quote" => {
@@ -250,6 +270,7 @@ impl MalType {
                                                 args,
                                                 env,
                                                 is_macro: true,
+                                                meta: None,
                                             }
                                         }
                                         MalType::Builtin(..) => ev,
@@ -281,12 +302,12 @@ impl MalType {
                                 );
                             }
 
-                            if let Self::List(ref l0) = args[1]
+                            if let Self::List(ref l0, ..) = args[1]
                                 && l0.len() == 3
                                 && let Self::Symbol(ref catch_sym) = l0[0]
                                 && catch_sym == "catch*"
                             {
-                                match args[0].eval(env_original) {
+                                match args[0].eval(env) {
                                     ok @ Ok(_) => return ok,
                                     Err(err) => {
                                         let e = match err {
@@ -326,6 +347,7 @@ impl MalType {
                                     args: ref fn_args,
                                     env: ref fn_env,
                                     is_macro: false,
+                                    meta: None,
                                 } => {
                                     let evaluated_args = args
                                         .iter()
@@ -359,7 +381,7 @@ impl MalType {
 
                                     continue 'tco;
                                 }
-                                Self::Builtin(f) => {
+                                Self::Builtin(f, ..) => {
                                     let args = list_inner[1..]
                                         .iter()
                                         .map(|i| i.eval(env))
@@ -377,18 +399,19 @@ impl MalType {
                         }
                     };
                 }
-                Self::Vec(v) => {
-                    return Ok(Self::Vec(v.iter().map(|e| e.eval(env)).collect::<Result<
+                Self::Vec(v, ..) => {
+                    return Ok(mal_vec!(v.iter().map(|e| e.eval(env)).collect::<Result<
                         Vec<Self>,
                         MalErr,
                     >>(
                     )?));
                 }
-                Self::HashMap(h) => {
+                Self::HashMap(h, ..) => {
                     return Ok(Self::HashMap(
                         h.iter()
                             .map(|(k, v)| Ok((k.clone(), v.eval(env)?)))
                             .collect::<Result<HashMap<String, MalType>, MalErr>>()?,
+                        None,
                     ));
                 }
                 Self::Symbol(s) => {
@@ -404,10 +427,10 @@ impl MalType {
 }
 
 fn splice_unquote(l: &[MalType]) -> MalRet {
-    let mut result = MalType::List(Vec::new());
+    let mut result = mal_list!(Vec::new());
 
     for elt in l.iter().rev() {
-        if let MalType::List(elt_list) = elt
+        if let MalType::List(elt_list, ..) = elt
             && !elt_list.is_empty()
             && let MalType::Symbol(x) = &elt_list[0]
             && x == "splice-unquote"
@@ -419,13 +442,13 @@ fn splice_unquote(l: &[MalType]) -> MalRet {
                 );
             }
 
-            result = MalType::List(vec![
+            result = mal_list!(vec![
                 MalType::Symbol("concat".to_string()),
                 elt_list[1].clone(),
                 result,
             ])
         } else {
-            result = MalType::List(vec![
+            result = mal_list!(vec![
                 MalType::Symbol("cons".to_string()),
                 quasiquote(elt)?,
                 result,
@@ -438,7 +461,7 @@ fn splice_unquote(l: &[MalType]) -> MalRet {
 
 fn quasiquote(ast: &MalType) -> MalRet {
     match ast {
-        MalType::List(l) => {
+        MalType::List(l, ..) => {
             if !l.is_empty()
                 && let MalType::Symbol(sym) = &l[0]
                 && sym == "unquote"
@@ -453,14 +476,14 @@ fn quasiquote(ast: &MalType) -> MalRet {
             }
         }
 
-        MalType::Vec(v) => Ok(MalType::List(vec![
+        MalType::Vec(v, ..) => Ok(mal_list!(vec![
             MalType::Symbol("vec".to_string()),
             splice_unquote(v)?,
         ])),
-        MalType::Symbol(_)
-        | MalType::HashMap(_)
-        | MalType::Builtin(_)
-        | MalType::MalFunc { .. } => Ok(MalType::List(vec![
+        MalType::Symbol(..)
+        | MalType::HashMap(..)
+        | MalType::Builtin(..)
+        | MalType::MalFunc { .. } => Ok(mal_list!(vec![
             MalType::Symbol("quote".to_string()),
             ast.clone(),
         ])),
@@ -507,21 +530,21 @@ impl Display for MalType {
                 }
             }
             MalType::Bool(b) => write!(f, "{b}"),
-            MalType::List(l) => {
+            MalType::List(l, ..) => {
                 if f.alternate() {
                     write!(f, "({:#})", l.iter().map(|e| format!("{e:#}")).join(" "))
                 } else {
                     write!(f, "({})", l.iter().join(" "))
                 }
             }
-            MalType::Vec(v) => {
+            MalType::Vec(v, ..) => {
                 if f.alternate() {
                     write!(f, "[{:#}]", v.iter().map(|e| format!("{e:#}")).join(" "))
                 } else {
                     write!(f, "[{}]", v.iter().join(" "))
                 }
             }
-            MalType::HashMap(h) => {
+            MalType::HashMap(h, ..) => {
                 let s = h
                     .iter()
                     .map(|(key, val)| {
@@ -590,5 +613,5 @@ pub fn make_hashmap(seq: Vec<MalType>) -> Result<MalType, MalErr> {
         .map(|(key, val)| Ok((to_hashmap_key(key)?, val.clone())))
         .collect::<Result<HashMap<_, _>, MalErr>>()?;
 
-    Ok(MalType::HashMap(h))
+    Ok(MalType::HashMap(h, None))
 }
