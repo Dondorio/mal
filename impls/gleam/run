@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+cd $(dirname $0)
+exec gleam run --module ${STEP:-stepA_mal} --no-print-progress -- "${@}"
