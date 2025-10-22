@@ -3,8 +3,8 @@ import gleam/int
 import gleam/list
 import gleam/string
 import types.{
-  Array, Bool, HashMap, Int, Keyword, List, Nil, ReaderEmpyForm, ReaderEof,
-  ReaderInvalidHashMap, String, Symbol,
+  Bool, HashMap, Int, Keyword, List, Nil, ReaderEmpyForm, ReaderEof,
+  ReaderInvalidHashMap, String, Symbol, Vector,
 }
 
 pub fn prn_err(err: types.Error) {
@@ -13,6 +13,14 @@ pub fn prn_err(err: types.Error) {
     ReaderInvalidHashMap ->
       "failed to construct hashmap: item count not divisible by 2"
     ReaderEmpyForm -> "read_form called with empty list"
+    types.EvalWrongArgLen(expected, provided) ->
+      "expected "
+      <> int.to_string(expected)
+      <> " arguments, got "
+      <> int.to_string(provided)
+    types.EvalWrongType(_expected, _provided) -> "todo"
+    types.EvalDivideByZero -> "can't divide by zero"
+    types.EvalApplyType(x) -> "can't apply '" <> pr_str(x, True) <> "'"
   }
 }
 
@@ -33,7 +41,7 @@ pub fn pr_str(ast: types.MalType, print_readability: Bool) -> String {
       <> list.map(list, fn(x) { pr_str(x, print_readability) })
       |> string.join(" ")
       <> ")"
-    Array(arr, _) ->
+    Vector(arr, _) ->
       "["
       <> list.map(arr, fn(x) { pr_str(x, print_readability) })
       |> string.join(" ")
@@ -51,5 +59,6 @@ pub fn pr_str(ast: types.MalType, print_readability: Bool) -> String {
 
       "{" <> d <> "}"
     }
+    types.Builtin(_) -> "builtin"
   }
 }

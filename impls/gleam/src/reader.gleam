@@ -7,7 +7,7 @@ import gleam/result
 import gleam/string
 import types.{
   type Error, type MalType, Bool, HashMap, Int, Keyword, List, ReaderEmpyForm,
-  ReaderEof, ReaderInvalidHashMap, String, Symbol,
+  ReaderEof, ReaderInvalidHashMap, String, Symbol, Vector,
 }
 
 pub fn read_str(str: String) {
@@ -95,7 +95,7 @@ fn read_seq(input: List(String), acc: List(MalType), closing: String) {
     [x, ..rest] if x == closing -> {
       case closing {
         ")" -> Ok(#(List(acc, types.Nil), rest))
-        "]" -> Ok(#(types.Array(acc, types.Nil), rest))
+        "]" -> Ok(#(Vector(acc, types.Nil), rest))
         "}" -> {
           let tuples = list_to_pairs(acc, [])
 
