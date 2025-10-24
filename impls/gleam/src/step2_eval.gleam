@@ -55,7 +55,7 @@ fn loop(env) {
     input
     |> rep(env)
   case prn {
-    Error(err) -> printer.prn_err(err) |> io.println_error()
+    Error(err) -> printer.pr_err(err) |> io.println_error()
     Ok(str) -> io.println(str)
   }
 

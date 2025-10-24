@@ -2,17 +2,15 @@ import gleam/dict
 import gleam/int
 import gleam/list
 import gleam/string
-import types.{
-  Bool, HashMap, Int, Keyword, List, Nil, ReaderEmpyForm, ReaderEof,
-  ReaderInvalidHashMap, String, Symbol, Vector,
-}
+import types.{Bool, HashMap, Int, Keyword, List, Nil, String, Symbol, Vector}
 
-pub fn prn_err(err: types.Error) {
+pub fn pr_err(err: types.Error) {
   case err {
-    ReaderEof(expected) -> "expected '" <> expected <> "', found EOF"
-    ReaderInvalidHashMap ->
+    types.ReaderEof(expected) -> "expected '" <> expected <> "', found EOF"
+    types.ReaderInvalidHashMap ->
       "failed to construct hashmap: item count not divisible by 2"
-    ReaderEmpyForm -> "read_form called with empty list"
+    types.ReaderEmpyForm -> "read_form called with empty list"
+
     types.EvalWrongArgLen(expected, provided) ->
       "expected "
       <> int.to_string(expected)
@@ -21,6 +19,8 @@ pub fn prn_err(err: types.Error) {
     types.EvalWrongType(_expected, _provided) -> "todo"
     types.EvalDivideByZero -> "can't divide by zero"
     types.EvalApplyType(x) -> "can't apply '" <> pr_str(x, True) <> "'"
+    types.EvalSymbolNotFound(sym) -> "'" <> sym <> "' not found"
+    types.EnvToKey(ast) -> "can't bind value to '" <> pr_str(ast, True) <> "'"
   }
 }
 

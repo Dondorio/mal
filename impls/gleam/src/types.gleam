@@ -21,8 +21,12 @@ pub type Error {
   ReaderEof(expected: String)
   ReaderInvalidHashMap
   ReaderEmpyForm
+
   EvalWrongArgLen(expected: Int, provided: Int)
   EvalWrongType(expected: String, provided: String)
   EvalDivideByZero
   EvalApplyType(provided: MalType)
+  EvalSymbolNotFound(symbol: String)
+
+  EnvToKey(ast: MalType)
 }
