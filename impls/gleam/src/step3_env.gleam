@@ -18,9 +18,7 @@ pub fn main() -> Nil {
         [a, b] -> {
           case a, b {
             Int(x), Int(y) -> with(x, y) |> result.map(fn(z) { Int(z) })
-            // TODO
-            // wrong type constructor function
-            _, _ -> Error(types.EvalWrongType("", ""))
+            _, _ -> types.wrong_type_err("int, int", [a, b])
           }
         }
         _ -> Error(types.EvalWrongArgLen(2, list.length(l)))
@@ -89,12 +87,12 @@ fn eval(ast: MalType, env: env.Env) -> Result(#(MalType, env.Env), types.Error) 
   case ast {
     Symbol(sym) -> {
       case env.get(env, sym) {
-        None -> Ok(#(ast, env))
+        None -> Error(types.EvalSymbolNotFound(sym))
         Some(val) -> Ok(#(val, env))
       }
     }
     List([l, ..rest], _) -> {
-      let eval_args = fn() {
+      let eval_args = fn(env) {
         list.try_fold(rest, #([], env), fn(acc, x) {
           use #(res, env) <- result.try(eval(x, acc.1))
 
@@ -108,7 +106,7 @@ fn eval(ast: MalType, env: env.Env) -> Result(#(MalType, env.Env), types.Error) 
           case rest {
             [key, val] -> {
               use #(res, _) <- result.try(eval(val, env))
-              use k <- result.try(env.ast_to_key(key))
+              use k <- result.try(env.try_key(key))
 
               let env = env.set(env, k, res)
 
@@ -134,18 +132,11 @@ fn eval(ast: MalType, env: env.Env) -> Result(#(MalType, env.Env), types.Error) 
           }
         }
 
-        Symbol(sym) -> {
-          case env.get(env, sym) {
-            None -> Error(types.EvalSymbolNotFound(sym))
-            Some(a) -> {
-              use #(args, env) <- result.try(eval_args())
-              apply(a, args) |> result.map(fn(o) { #(o, env) })
-            }
-          }
-        }
         _ -> {
-          use #(args, env) <- result.try(eval_args())
-          apply(l, args) |> result.map(fn(o) { #(o, env) })
+          use #(f, env) <- result.try(eval(l, env))
+          use #(args, env) <- result.try(eval_args(env))
+
+          apply(f, args) |> result.map(fn(o) { #(o, env) })
         }
       }
     }
@@ -184,7 +175,7 @@ fn let_special(pairs, acc, env) {
   case pairs {
     [key, val, ..rest] -> {
       use #(res, env) <- result.try(eval(val, env))
-      use k <- result.try(env.ast_to_key(key))
+      use k <- result.try(env.try_key(key))
 
       let env = env.set(env, k, res)
 

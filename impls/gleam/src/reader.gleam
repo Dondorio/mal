@@ -126,18 +126,37 @@ fn use_parse_int(input: String, with: fn(Nil) -> Result(MalType, Error)) {
   }
 }
 
+fn unescape_str(str, acc) {
+  case str {
+    "\\n" <> rest -> unescape_str(rest, acc <> "\n")
+    "\\\"" <> rest -> unescape_str(rest, acc <> "\"")
+    "\\\\" <> rest -> unescape_str(rest, acc <> "\\")
+    "" -> acc
+    _ -> {
+      case string.pop_grapheme(str) {
+        Error(_) -> acc
+        Ok(#(g, rest)) -> unescape_str(rest, acc <> g)
+      }
+    }
+  }
+}
+
 fn use_parse_str(input: String, with: fn(Nil) -> Result(MalType, Error)) {
   let assert Ok(str_re) = regexp.from_string("\"(?:\\\\.|[^\\\\\"])*\"")
   let is_string = regexp.check(str_re, input)
 
   case is_string {
     False -> with(Nil)
-    True -> Ok(String(input |> string.drop_end(1) |> string.drop_start(1)))
+    True ->
+      Ok(String(
+        input |> string.drop_end(1) |> string.drop_start(1) |> unescape_str(""),
+      ))
   }
 }
 
 fn read_atom(input: String) -> Result(MalType, Error) {
   case input {
+    "nil" -> Ok(types.Nil)
     "true" -> Ok(Bool(True))
     "false" -> Ok(Bool(False))
     _ -> {

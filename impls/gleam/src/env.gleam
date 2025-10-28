@@ -11,13 +11,14 @@ pub fn new() -> Env {
 }
 
 pub fn get(env: Env, key: String) -> Option(MalType) {
-  case env.outer {
-    Some(e) -> get(e, key)
-    None -> {
-      env.data
-      |> dict.get(key)
-      |> option.from_result()
+  case dict.get(env.data, key) {
+    Error(_) -> {
+      case env.outer {
+        None -> None
+        Some(e) -> get(e, key)
+      }
     }
+    Ok(data) -> Some(data)
   }
 }
 
@@ -25,6 +26,22 @@ pub fn set(env: Env, key: String, val: MalType) -> Env {
   env.data
   |> dict.insert(key, val)
   |> Env(env.outer, _)
+}
+
+pub fn bind(env: Env, from: List(String), to: List(MalType)) {
+  case from {
+    ["&", sym] -> Ok(set(env, sym, types.List(to, types.Nil)))
+    [sym, ..from_rest] ->
+      case to {
+        [t, ..rest] -> {
+          let env = set(env, sym, t)
+          bind(env, from_rest, rest)
+        }
+        [] -> Error(types.StrErr("can't bind env: not enough args provided"))
+      }
+    [] if to == [] -> Ok(env)
+    _ -> Error(types.StrErr("can't bind env: too many args provided"))
+  }
 }
 
 pub fn from_list(input: List(#(String, MalType)), outer: Option(Env)) -> Env {
@@ -42,13 +59,9 @@ pub fn into_outer(outer: Env) -> Env {
   Env(Some(outer), dict.new())
 }
 
-pub fn ast_to_key(ast: MalType) -> Result(String, Error) {
+pub fn try_key(ast: MalType) -> Result(String, Error) {
   case ast {
     types.Symbol(sym) -> Ok(sym)
     _ -> Error(types.EnvToKey(ast))
   }
-}
-
-pub fn key_to_ast(str: String) {
-  types.Symbol(str)
 }

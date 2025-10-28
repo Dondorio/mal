@@ -16,16 +16,13 @@ pub fn main() -> Nil {
         [a, b] -> {
           case a, b {
             Int(x), Int(y) -> with(x, y) |> result.map(fn(z) { Int(z) })
-            // TODO
-            // wrong type constructor function
-            _, _ -> Error(types.EvalWrongType("", ""))
+            _, _ -> types.wrong_type_err("int, int", [a, b])
           }
         }
         _ -> Error(types.EvalWrongArgLen(2, list.length(l)))
       }
     })
   }
-
   let env =
     [
       #("+", int_op(fn(a, b) { Ok(a + b) })),
@@ -73,7 +70,7 @@ fn eval(ast: MalType, env: dict.Dict(String, MalType)) -> types.MalRet {
   case ast {
     Symbol(sym) -> {
       case dict.get(env, sym) {
-        Error(_) -> Ok(ast)
+        Error(_) -> Error(types.EvalSymbolNotFound(sym))
         Ok(val) -> Ok(val)
       }
     }
