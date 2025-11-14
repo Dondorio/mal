@@ -1,0 +1,13 @@
+(version 1.5.1)
+
+(build
+ (run dune build @install -p %{pkg-self:name} -j %{jobs}))
+
+(depends dune ocaml)
+
+(source
+ (fetch
+  (url
+   https://github.com/ocaml-community/ocaml-linenoise/releases/download/v1.5.1/linenoise-1.5.1.tbz)
+  (checksum
+   sha256=eef172cb98282b7a8be182f3493f4687ed3a3f833d3c2707d07d188bf9dede37)))

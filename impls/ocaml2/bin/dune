@@ -1,0 +1,11 @@
+(env
+ (dev
+  (flags (:standard -warn-error -A))))
+
+(executable
+ (public_name step0_repl)
+ (name step0_repl)
+ (modules step0_repl)
+ (libraries mal core)
+ (preprocess
+  (pps ppx_jane)))
