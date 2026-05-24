@@ -1,17 +1,20 @@
 import gleam/dict.{type Dict}
 import gleam/option.{type Option, None, Some}
+import mut_cell.{type MutCell}
 import types.{type Error, type MalType}
 
 pub opaque type Env {
-  Env(outer: Option(Env), data: Dict(String, MalType))
+  Env(outer: Option(Env), data: MutCell(Dict(String, MalType)))
 }
 
-pub fn new() -> Env {
-  Env(None, dict.new())
+pub fn new(outer, data) -> Env {
+  Env(outer, mut_cell.new(data))
 }
 
 pub fn get(env: Env, key: String) -> Option(MalType) {
-  case dict.get(env.data, key) {
+  let hm = mut_cell.get(env.data)
+
+  case dict.get(hm, key) {
     Error(_) -> {
       case env.outer {
         None -> None
@@ -22,10 +25,11 @@ pub fn get(env: Env, key: String) -> Option(MalType) {
   }
 }
 
-pub fn set(env: Env, key: String, val: MalType) -> Env {
-  env.data
-  |> dict.insert(key, val)
-  |> Env(env.outer, _)
+pub fn set(env: Env, key: String, val: MalType) {
+  mut_cell.update(env.data, fn(data) {
+    data
+    |> dict.insert(key, val)
+  })
 }
 
 pub fn bind(env: Env, from: List(String), to: List(MalType)) {
@@ -34,29 +38,27 @@ pub fn bind(env: Env, from: List(String), to: List(MalType)) {
     [sym, ..from_rest] ->
       case to {
         [t, ..rest] -> {
-          let env = set(env, sym, t)
+          set(env, sym, t)
           bind(env, from_rest, rest)
         }
         [] -> Error(types.StrErr("can't bind env: not enough args provided"))
       }
-    [] if to == [] -> Ok(env)
+    [] if to == [] -> Ok(Nil)
     _ -> Error(types.StrErr("can't bind env: too many args provided"))
   }
 }
 
 pub fn from_list(input: List(#(String, MalType)), outer: Option(Env)) -> Env {
-  input
-  |> dict.from_list()
-  |> Env(outer, _)
+  let data = dict.from_list(input)
+  Env(outer, mut_cell.new(data))
 }
 
 pub fn from_dict(input: Dict(String, MalType), outer: Option(Env)) -> Env {
-  input
-  |> Env(outer, _)
+  Env(outer, mut_cell.new(input))
 }
 
 pub fn into_outer(outer: Env) -> Env {
-  Env(Some(outer), dict.new())
+  Env(Some(outer), mut_cell.new(dict.new()))
 }
 
 pub fn try_key(ast: MalType) -> Result(String, Error) {

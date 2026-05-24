@@ -97,6 +97,5 @@ pub fn pr_str(ast: types.MalType, print_readability: Bool) -> String {
     }
     types.Builtin(..) -> "#<builtin>"
     types.Func(..) -> "#<function>"
-    types.LazyFunc(_) -> "#<lazy>"
   }
 }

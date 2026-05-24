@@ -18,7 +18,6 @@ pub type MalType {
 
   Builtin(fn(List(MalType)) -> MalRet)
   Func(fn(List(MalType)) -> MalRet, meta: MalType)
-  LazyFunc(fn() -> MalRet)
 }
 
 pub fn eq(a: MalType, b: MalType) -> Bool {
@@ -60,7 +59,6 @@ pub fn wrong_type_err(expected: String, got: List(MalType)) {
         HashMap(_, _) -> "hashmap"
         Builtin(_) -> "builtin"
         Func(_, _) -> "func"
-        LazyFunc(_) -> "lazy"
       }
     })
     |> string.join(", ")

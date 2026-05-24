@@ -76,7 +76,7 @@ fn apply(x: MalType, args: List(MalType)) -> MalRet {
   }
 }
 
-fn eval(ast: MalType, env: env.Env) -> Result(#(MalType, env.Env), types.Error) {
+fn eval(ast: MalType, env: env.Env) -> MalRet {
   case env.get(env, "DEBUG-EVAL") {
     None -> Nil
     Some(_) -> {
@@ -88,29 +88,22 @@ fn eval(ast: MalType, env: env.Env) -> Result(#(MalType, env.Env), types.Error) 
     Symbol(sym) -> {
       case env.get(env, sym) {
         None -> Error(types.EvalSymbolNotFound(sym))
-        Some(val) -> Ok(#(val, env))
+        Some(val) -> Ok(val)
       }
     }
     List([l, ..rest], _) -> {
-      let eval_args = fn(env) {
-        list.try_fold(rest, #([], env), fn(acc, x) {
-          use #(res, env) <- result.try(eval(x, acc.1))
-
-          Ok(#([res, ..acc.0], env))
-        })
-        |> result.map(fn(o) { #(list.reverse(o.0), o.1) })
-      }
+      let eval_args = fn(env) { list.try_map(rest, fn(x) { eval(x, env) }) }
 
       case l {
         Symbol("def!") ->
           case rest {
             [key, val] -> {
-              use #(res, _) <- result.try(eval(val, env))
+              use res <- result.try(eval(val, env))
               use k <- result.try(env.try_key(key))
 
-              let env = env.set(env, k, res)
+              env.set(env, k, res)
 
-              Ok(#(res, env))
+              Ok(res)
             }
             _ -> Error(types.EvalWrongArgLen(2, list.length(rest)))
           }
@@ -119,11 +112,11 @@ fn eval(ast: MalType, env: env.Env) -> Result(#(MalType, env.Env), types.Error) 
             [pairs, closure] -> {
               case pairs {
                 List(l, _) | Vector(l, _) -> {
-                  use e <- result.try(let_special(l, [], env))
-                  let new_env = env.into_outer(e)
+                  let new_env = env.into_outer(env)
+                  use e <- result.try(let_special(l, [], new_env))
 
-                  use #(res, _) <- result.try(eval(closure, new_env))
-                  Ok(#(res, env))
+                  use res <- result.try(eval(closure, e))
+                  Ok(res)
                 }
                 _ -> Error(types.EvalWrongType("list | vector", ""))
               }
@@ -133,51 +126,53 @@ fn eval(ast: MalType, env: env.Env) -> Result(#(MalType, env.Env), types.Error) 
         }
 
         _ -> {
-          use #(f, env) <- result.try(eval(l, env))
-          use #(args, env) <- result.try(eval_args(env))
+          use f <- result.try(eval(l, env))
+          use args <- result.try(eval_args(env))
 
-          apply(f, args) |> result.map(fn(o) { #(o, env) })
+          echo #(f, args)
+
+          apply(f, args)
         }
       }
     }
     Vector(vec, _) -> {
-      use #(res, env) <- result.try(
-        list.try_fold(vec, #([], env), fn(acc, x) {
-          use #(res, env) <- result.try(eval(x, acc.1))
+      use res <- result.try(
+        list.try_fold(vec, [], fn(acc, x) {
+          use res <- result.try(eval(x, env))
 
-          Ok(#([res, ..acc.0], env))
+          Ok([res, ..acc])
         })
-        |> result.map(fn(o) { #(list.reverse(o.0), o.1) }),
+        |> result.map(fn(o) { list.reverse(o) }),
       )
 
-      Ok(#(Vector(res, types.Nil), env))
+      Ok(Vector(res, types.Nil))
     }
     HashMap(hm, _) -> {
-      use #(res, env) <- result.try(
+      use res <- result.try(
         hm
         |> dict.to_list()
-        |> list.try_fold(#([], env), fn(acc, x) {
-          use #(res, env) <- result.try(eval(x.1, acc.1))
+        |> list.try_fold([], fn(acc, x) {
+          use res <- result.try(eval(x.1, env))
 
           let pair = #(x.0, res)
-          Ok(#([pair, ..acc.0], env))
+          Ok([pair, ..acc])
         }),
       )
 
       let ret = HashMap(dict.from_list(res), types.Nil)
-      Ok(#(ret, env))
+      Ok(ret)
     }
-    _ -> Ok(#(ast, env))
+    _ -> Ok(ast)
   }
 }
 
 fn let_special(pairs, acc, env) {
   case pairs {
     [key, val, ..rest] -> {
-      use #(res, env) <- result.try(eval(val, env))
+      use res <- result.try(eval(val, env))
       use k <- result.try(env.try_key(key))
 
-      let env = env.set(env, k, res)
+      env.set(env, k, res)
 
       let_special(rest, [res, ..acc], env)
     }
@@ -197,7 +192,7 @@ fn print(ast) {
 
 fn rep(str, env) {
   use r <- result.try(read(str))
-  use #(e, env) <- result.try(eval(r, env))
+  use e <- result.try(eval(r, env))
 
   Ok(#(print(e), env))
 }
