@@ -2,6 +2,7 @@ import gleam/dict
 import gleam/int
 import gleam/list
 import gleam/string
+import mut_cell
 import types.{Bool, HashMap, Int, Keyword, List, Nil, String, Symbol, Vector}
 
 pub fn pr_err(err: types.Error) -> String {
@@ -97,5 +98,7 @@ pub fn pr_str(ast: types.MalType, print_readability: Bool) -> String {
     }
     types.Builtin(..) -> "#<builtin>"
     types.Func(..) -> "#<function>"
+    types.Atom(ref) ->
+      "(atom " <> pr_str(mut_cell.get(ref), print_readability) <> ")"
   }
 }

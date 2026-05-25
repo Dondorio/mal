@@ -1,6 +1,7 @@
 import gleam/dict
 import gleam/list
 import gleam/string
+import mut_cell.{type MutCell}
 
 pub type MalRet =
   Result(MalType, Error)
@@ -15,6 +16,7 @@ pub type MalType {
   List(List(MalType), meta: MalType)
   Vector(List(MalType), meta: MalType)
   HashMap(dict.Dict(MalType, MalType), meta: MalType)
+  Atom(MutCell(MalType))
 
   Builtin(fn(List(MalType)) -> MalRet)
   Func(fn(List(MalType)) -> MalRet, meta: MalType)
@@ -59,6 +61,7 @@ pub fn wrong_type_err(expected: String, got: List(MalType)) {
         HashMap(_, _) -> "hashmap"
         Builtin(_) -> "builtin"
         Func(_, _) -> "func"
+        Atom(_) -> "atom"
       }
     })
     |> string.join(", ")

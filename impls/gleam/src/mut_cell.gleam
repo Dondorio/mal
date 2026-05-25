@@ -1,5 +1,6 @@
 import gleam/erlang/process.{type Subject}
 import gleam/otp/actor
+import gleam/result
 
 pub fn new(value: a) {
   let handle_message = fn(state: a, message: Message(a)) -> actor.Next(
@@ -42,9 +43,16 @@ pub fn get(cell: MutCell(a)) {
 
 pub fn set(cell: MutCell(a), new: a) {
   actor.send(cell.data, Set(new))
-  actor.continue(cell)
+  Nil
 }
 
 pub fn update(cell: MutCell(a), f: fn(a) -> a) {
   actor.send(cell.data, Update(f))
+}
+
+pub fn try_update(cell: MutCell(a), f: fn(a) -> Result(a, e)) {
+  let data = get(cell)
+  use res <- result.try(f(data))
+  set(cell, res)
+  Ok(res)
 }

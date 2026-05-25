@@ -1,9 +1,15 @@
+import argv
 import gleam/io
 import gleam/list
 import gleam/result
 import gleam/string
+import mut_cell
 import printer
-import types.{type Error, type MalType, Bool, Builtin, Int, List, String, Vector}
+import reader
+import simplifile
+import types.{
+  type Error, type MalType, Atom, Bool, Builtin, Func, Int, List, String, Vector,
+}
 
 pub fn ns() {
   let int_op = fn(with: fn(Int, Int) -> Result(MalType, Error)) {
@@ -34,11 +40,12 @@ pub fn ns() {
         }
       }),
     ),
+
+    // Bool
     #(">", int_op(fn(a, b) { Ok(Bool(a > b)) })),
     #(">=", int_op(fn(a, b) { Ok(Bool(a >= b)) })),
     #("<", int_op(fn(a, b) { Ok(Bool(a < b)) })),
     #("<=", int_op(fn(a, b) { Ok(Bool(a <= b)) })),
-    // Bool
     #(
       "=",
       Builtin(fn(args) {
@@ -61,12 +68,22 @@ pub fn ns() {
       "empty?",
       Builtin(fn(args) {
         case args {
-          [List([], _), ..] | [Vector([], _), ..] -> Ok(Bool(True))
-          [List(_, _), ..] | [Vector(_, _), ..] -> Ok(Bool(False))
-          _ -> Error(types.EvalWrongArgLenGreaterThan(1, 0))
+          [List([], _)] | [Vector([], _)] -> Ok(Bool(True))
+          [List(_, _)] | [Vector(_, _)] -> Ok(Bool(False))
+          _ -> types.wrong_type_err("list | vector", args)
         }
       }),
     ),
+    #(
+      "atom?",
+      Builtin(fn(args) {
+        case args {
+          [Atom(_)] -> Ok(Bool(True))
+          _ -> Ok(Bool(False))
+        }
+      }),
+    ),
+
     // String
     #(
       "pr-str",
@@ -88,6 +105,7 @@ pub fn ns() {
         )
       }),
     ),
+
     // IO 
     #(
       "prn",
@@ -107,17 +125,98 @@ pub fn ns() {
         Ok(types.Nil)
       }),
     ),
+    #(
+      "slurp",
+      Builtin(fn(args) {
+        case args {
+          [String(path)] -> {
+            case simplifile.read(path) {
+              Ok(str) -> Ok(String(str))
+              Error(err) ->
+                Error(types.StrErr(
+                  "failed to open file: " <> string.inspect(err),
+                ))
+            }
+          }
+          _ -> types.wrong_type_err("string", args)
+        }
+      }),
+    ),
+
     // Declare
     #("list", Builtin(fn(args) { Ok(List(args, types.Nil)) })),
+    #(
+      "atom",
+      Builtin(fn(args) {
+        case args {
+          [data] -> Ok(Atom(mut_cell.new(data)))
+          _ -> types.wrong_type_err("any", args)
+        }
+      }),
+    ),
+
+    // Atom 
+    #(
+      "deref",
+      Builtin(fn(args) {
+        case args {
+          [Atom(ref)] -> Ok(mut_cell.get(ref))
+          _ -> types.wrong_type_err("atom", args)
+        }
+      }),
+    ),
+    #(
+      "reset!",
+      Builtin(fn(args) {
+        case args {
+          [Atom(ref), data] -> {
+            mut_cell.set(ref, data)
+            Ok(data)
+          }
+          _ -> types.wrong_type_err("atom", args)
+        }
+      }),
+    ),
+    #(
+      "swap!",
+      Builtin(fn(args) {
+        case args {
+          [Atom(ref), Func(f, _), ..rest] | [Atom(ref), Builtin(f), ..rest] -> {
+            mut_cell.try_update(ref, fn(data) { f([data, ..rest]) })
+          }
+          _ -> types.wrong_type_err("atom, func", args)
+        }
+      }),
+    ),
+
     // Other
     #(
       "count",
       Builtin(fn(args) {
         case args {
-          [List(l, _), ..] | [Vector(l, _), ..] -> Ok(Int(list.length(l)))
+          [List(l, _)] | [Vector(l, _)] -> Ok(Int(list.length(l)))
           _ -> Ok(Int(0))
         }
       }),
+    ),
+    #(
+      "read-string",
+      Builtin(fn(args) {
+        case args {
+          [String(str)] -> reader.read_str(str)
+          _ -> types.wrong_type_err("string", args)
+        }
+      }),
+    ),
+    #(
+      "*ARGV*",
+      List(
+        argv.load().arguments
+          // Ignore file path arg
+          |> list.drop(1)
+          |> list.map(fn(arg) { String(arg) }),
+        types.Nil,
+      ),
     ),
   ]
 }

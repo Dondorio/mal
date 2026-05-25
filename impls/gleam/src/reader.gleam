@@ -34,10 +34,9 @@ fn tokenize(str: String) {
       <> ")",
     )
 
-  // TODO remove the need for this filter
-  // something to do with the regex or regexp.split
   regexp.split(re, str)
   |> list.filter(fn(x) { x != "" })
+  |> list.filter(fn(x) { !string.starts_with(x, ";") })
 }
 
 fn read_form(x: List(String)) {

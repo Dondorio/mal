@@ -129,8 +129,6 @@ fn eval(ast: MalType, env: env.Env) -> MalRet {
           use f <- result.try(eval(l, env))
           use args <- result.try(eval_args(env))
 
-          echo #(f, args)
-
           apply(f, args)
         }
       }
