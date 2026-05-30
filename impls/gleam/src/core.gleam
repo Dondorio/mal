@@ -106,6 +106,30 @@ pub fn ns() {
       }),
     ),
 
+    // Seq
+    #(
+      "cons",
+      Builtin(fn(args) {
+        case args {
+          [head, List(tail, _)] | [head, Vector(tail, _)] ->
+            Ok(List([head, ..tail], types.Nil))
+          _ -> types.wrong_type_err("any, list | vector", args)
+        }
+      }),
+    ),
+    #(
+      "concat",
+      Builtin(fn(args) {
+        list.try_fold(args, [], fn(acc, x) {
+          case x {
+            List(l, _) | Vector(l, _) -> Ok(list.append(acc, l))
+            _ -> types.wrong_type_err("...(list | vector)", args)
+          }
+        })
+        |> result.map(fn(res) { List(res, types.Nil) })
+      }),
+    ),
+
     // IO 
     #(
       "prn",
@@ -145,6 +169,15 @@ pub fn ns() {
 
     // Declare
     #("list", Builtin(fn(args) { Ok(List(args, types.Nil)) })),
+    #(
+      "vec",
+      Builtin(fn(args) {
+        case args {
+          [List(l, _)] | [Vector(l, _)] -> Ok(Vector(l, types.Nil))
+          _ -> types.wrong_type_err("list | vector", args)
+        }
+      }),
+    ),
     #(
       "atom",
       Builtin(fn(args) {
