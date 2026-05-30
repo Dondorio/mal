@@ -8,12 +8,12 @@ import printer
 import reader
 import readline.{readline}
 import types.{
-  type MalRet, type MalType, Builtin, HashMap, Int, List, Symbol, Vector,
+  type MalRet, type MalType, Func, HashMap, Int, List, Symbol, Vector,
 }
 
 pub fn main() -> Nil {
   let int_op = fn(with: fn(Int, Int) -> Result(Int, types.Error)) {
-    Builtin(fn(l: List(MalType)) {
+    types.func(fn(l: List(MalType)) {
       case l {
         [a, b] -> {
           case a, b {
@@ -71,7 +71,7 @@ fn loop(env) {
 
 fn apply(x: MalType, args: List(MalType)) -> MalRet {
   case x {
-    Builtin(f) -> f(args)
+    Func(f, ..) -> f(args)
     _ -> Error(types.EvalApplyType(x))
   }
 }

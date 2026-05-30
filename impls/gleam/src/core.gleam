@@ -1,6 +1,7 @@
 import argv
 import gleam/io
 import gleam/list
+import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import mut_cell
@@ -8,12 +9,28 @@ import printer
 import reader
 import simplifile
 import types.{
-  type Error, type MalType, Atom, Bool, Builtin, Func, Int, List, String, Vector,
+  type Error, type MalType, Atom, Bool, Func, Int, List, StrErr, String, Vector,
+  func,
+}
+
+pub fn nth(list: List(a), n: Int) -> Option(a) {
+  case n < 0 {
+    True -> None
+    False ->
+      case list {
+        [] -> None
+        [x, ..rest] ->
+          case n == 0 {
+            True -> Some(x)
+            False -> nth(rest, n - 1)
+          }
+      }
+  }
 }
 
 pub fn ns() {
   let int_op = fn(with: fn(Int, Int) -> Result(MalType, Error)) {
-    Builtin(fn(l: List(MalType)) {
+    func(fn(l: List(MalType)) {
       case l {
         [a, b] -> {
           case a, b {
@@ -48,7 +65,7 @@ pub fn ns() {
     #("<=", int_op(fn(a, b) { Ok(Bool(a <= b)) })),
     #(
       "=",
-      Builtin(fn(args) {
+      func(fn(args) {
         case args {
           [a, b, ..] -> Ok(Bool(types.eq(a, b)))
           _ -> Ok(Bool(False))
@@ -57,7 +74,7 @@ pub fn ns() {
     ),
     #(
       "list?",
-      Builtin(fn(args) {
+      func(fn(args) {
         case args {
           [List(..), ..] -> Ok(Bool(True))
           _ -> Ok(Bool(False))
@@ -66,7 +83,7 @@ pub fn ns() {
     ),
     #(
       "empty?",
-      Builtin(fn(args) {
+      func(fn(args) {
         case args {
           [List([], _)] | [Vector([], _)] -> Ok(Bool(True))
           [List(_, _)] | [Vector(_, _)] -> Ok(Bool(False))
@@ -76,10 +93,20 @@ pub fn ns() {
     ),
     #(
       "atom?",
-      Builtin(fn(args) {
+      func(fn(args) {
         case args {
           [Atom(_)] -> Ok(Bool(True))
           _ -> Ok(Bool(False))
+        }
+      }),
+    ),
+    #(
+      "macro?",
+      func(fn(args) {
+        case args {
+          [Func(is_macro: True, ..)] -> Ok(Bool(True))
+          [_] -> Ok(Bool(False))
+          _ -> types.wrong_type_err("any", args)
         }
       }),
     ),
@@ -87,7 +114,7 @@ pub fn ns() {
     // String
     #(
       "pr-str",
-      Builtin(fn(args) {
+      func(fn(args) {
         Ok(
           list.map(args, fn(x) { printer.pr_str(x, True) })
           |> string.join(" ")
@@ -97,7 +124,7 @@ pub fn ns() {
     ),
     #(
       "str",
-      Builtin(fn(args) {
+      func(fn(args) {
         Ok(
           list.map(args, fn(x) { printer.pr_str(x, False) })
           |> string.join("")
@@ -109,7 +136,7 @@ pub fn ns() {
     // Seq
     #(
       "cons",
-      Builtin(fn(args) {
+      func(fn(args) {
         case args {
           [head, List(tail, _)] | [head, Vector(tail, _)] ->
             Ok(List([head, ..tail], types.Nil))
@@ -119,7 +146,7 @@ pub fn ns() {
     ),
     #(
       "concat",
-      Builtin(fn(args) {
+      func(fn(args) {
         list.try_fold(args, [], fn(acc, x) {
           case x {
             List(l, _) | Vector(l, _) -> Ok(list.append(acc, l))
@@ -129,11 +156,43 @@ pub fn ns() {
         |> result.map(fn(res) { List(res, types.Nil) })
       }),
     ),
+    #(
+      "first",
+      func(fn(args) {
+        case args {
+          [List([first, ..], _)] | [Vector([first, ..], _)] -> Ok(first)
+          [types.Nil] | [List(_, _)] | [Vector(_, _)] -> Ok(types.Nil)
+          _ -> types.wrong_type_err("list | vector", args)
+        }
+      }),
+    ),
+    #(
+      "rest",
+      func(fn(args) {
+        case args {
+          [List([_, ..rest], _)] | [Vector([_, ..rest], _)] ->
+            Ok(List(rest, types.Nil))
+          [types.Nil] | [List(_, _)] | [Vector(_, _)] -> Ok(List([], types.Nil))
+          _ -> types.wrong_type_err("list | vector", args)
+        }
+      }),
+    ),
+    #(
+      "nth",
+      func(fn(args) {
+        case args {
+          [List(data, _), Int(n)] | [Vector(data, _), Int(n)] ->
+            nth(data, n)
+            |> option.to_result(StrErr("index out of bounds"))
+          _ -> types.wrong_type_err("list | vector, int", args)
+        }
+      }),
+    ),
 
     // IO 
     #(
       "prn",
-      Builtin(fn(args) {
+      func(fn(args) {
         list.map(args, fn(x) { printer.pr_str(x, True) })
         |> string.join(" ")
         |> io.println()
@@ -142,7 +201,7 @@ pub fn ns() {
     ),
     #(
       "println",
-      Builtin(fn(args) {
+      func(fn(args) {
         list.map(args, fn(x) { printer.pr_str(x, False) })
         |> string.join(" ")
         |> io.println()
@@ -151,15 +210,13 @@ pub fn ns() {
     ),
     #(
       "slurp",
-      Builtin(fn(args) {
+      func(fn(args) {
         case args {
           [String(path)] -> {
             case simplifile.read(path) {
               Ok(str) -> Ok(String(str))
               Error(err) ->
-                Error(types.StrErr(
-                  "failed to open file: " <> string.inspect(err),
-                ))
+                Error(StrErr("failed to open file: " <> string.inspect(err)))
             }
           }
           _ -> types.wrong_type_err("string", args)
@@ -168,10 +225,10 @@ pub fn ns() {
     ),
 
     // Declare
-    #("list", Builtin(fn(args) { Ok(List(args, types.Nil)) })),
+    #("list", func(fn(args) { Ok(List(args, types.Nil)) })),
     #(
       "vec",
-      Builtin(fn(args) {
+      func(fn(args) {
         case args {
           [List(l, _)] | [Vector(l, _)] -> Ok(Vector(l, types.Nil))
           _ -> types.wrong_type_err("list | vector", args)
@@ -180,7 +237,7 @@ pub fn ns() {
     ),
     #(
       "atom",
-      Builtin(fn(args) {
+      func(fn(args) {
         case args {
           [data] -> Ok(Atom(mut_cell.new(data)))
           _ -> types.wrong_type_err("any", args)
@@ -191,7 +248,7 @@ pub fn ns() {
     // Atom 
     #(
       "deref",
-      Builtin(fn(args) {
+      func(fn(args) {
         case args {
           [Atom(ref)] -> Ok(mut_cell.get(ref))
           _ -> types.wrong_type_err("atom", args)
@@ -200,7 +257,7 @@ pub fn ns() {
     ),
     #(
       "reset!",
-      Builtin(fn(args) {
+      func(fn(args) {
         case args {
           [Atom(ref), data] -> {
             mut_cell.set(ref, data)
@@ -212,11 +269,10 @@ pub fn ns() {
     ),
     #(
       "swap!",
-      Builtin(fn(args) {
+      func(fn(args) {
         case args {
-          [Atom(ref), Func(f, _), ..rest] | [Atom(ref), Builtin(f), ..rest] -> {
+          [Atom(ref), Func(f, ..), ..rest] ->
             mut_cell.try_update(ref, fn(data) { f([data, ..rest]) })
-          }
           _ -> types.wrong_type_err("atom, func", args)
         }
       }),
@@ -225,7 +281,7 @@ pub fn ns() {
     // Other
     #(
       "count",
-      Builtin(fn(args) {
+      func(fn(args) {
         case args {
           [List(l, _)] | [Vector(l, _)] -> Ok(Int(list.length(l)))
           _ -> Ok(Int(0))
@@ -234,7 +290,7 @@ pub fn ns() {
     ),
     #(
       "read-string",
-      Builtin(fn(args) {
+      func(fn(args) {
         case args {
           [String(str)] -> reader.read_str(str)
           _ -> types.wrong_type_err("string", args)

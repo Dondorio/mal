@@ -96,7 +96,6 @@ pub fn pr_str(ast: types.MalType, print_readability: Bool) -> String {
 
       "{" <> d <> "}"
     }
-    types.Builtin(..) -> "#<builtin>"
     types.Func(..) -> "#<function>"
     types.Atom(ref) ->
       "(atom " <> pr_str(mut_cell.get(ref), print_readability) <> ")"

@@ -10,7 +10,7 @@ import printer
 import reader
 import readline.{readline}
 import types.{
-  type MalRet, type MalType, Bool, Builtin, Func, HashMap, List, Symbol, Vector,
+  type MalRet, type MalType, Bool, Func, HashMap, List, Symbol, Vector,
 }
 
 pub fn main() -> Nil {
@@ -26,7 +26,7 @@ pub fn main() -> Nil {
   env.set(
     env,
     "eval",
-    Builtin(fn(args) {
+    types.func(fn(args) {
       case args {
         [ast] -> eval(ast, env)
         _ -> types.wrong_type_err("any", args)
@@ -71,8 +71,7 @@ fn print_res(res) {
 
 fn apply(x: MalType, args: List(MalType)) -> MalRet {
   case x {
-    Builtin(f) -> f(args)
-    Func(f, _) -> f(args)
+    Func(f, ..) -> f(args)
     _ -> Error(types.EvalApplyType(x))
   }
 }
@@ -169,14 +168,14 @@ fn eval_list(first, rest, env) -> Result(MalType, types.Error) {
             }),
           )
 
-          let func = fn(args) {
+          let closure = fn(args) {
             let fn_env = env.into_outer(env)
             use _ <- result.try(env.bind(fn_env, param_names, args))
 
             eval(body, fn_env)
           }
 
-          Ok(Func(func, types.Nil))
+          Ok(types.func(closure))
         }
         [_, _] as l -> types.wrong_type_err("list, any", l)
         _ -> Error(types.EvalWrongArgLen(2, list.length(rest)))

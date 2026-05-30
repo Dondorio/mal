@@ -18,8 +18,11 @@ pub type MalType {
   HashMap(dict.Dict(MalType, MalType), meta: MalType)
   Atom(MutCell(MalType))
 
-  Builtin(fn(List(MalType)) -> MalRet)
-  Func(fn(List(MalType)) -> MalRet, meta: MalType)
+  Func(fn(List(MalType)) -> MalRet, is_macro: Bool, meta: MalType)
+}
+
+pub fn func(f: fn(List(MalType)) -> MalRet) {
+  Func(f, False, Nil)
 }
 
 pub fn eq(a: MalType, b: MalType) -> Bool {
@@ -56,11 +59,10 @@ pub fn wrong_type_err(expected: String, got: List(MalType)) {
         String(_) -> "string"
         Symbol(_) -> "symbol"
         Keyword(_) -> "keyword"
-        List(_, _) -> "list"
-        Vector(_, _) -> "vector"
-        HashMap(_, _) -> "hashmap"
-        Builtin(_) -> "builtin"
-        Func(_, _) -> "func"
+        List(..) -> "list"
+        Vector(..) -> "vector"
+        HashMap(..) -> "hashmap"
+        Func(..) -> "func"
         Atom(_) -> "atom"
       }
     })

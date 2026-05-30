@@ -20,6 +20,7 @@ pub fn main() -> Nil {
     [
       "(def! not (fn* (a) (if a false true)))",
       "(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \"\nnil)\")))))",
+      "(defmacro! cond (fn* (& xs) (if (> (count xs) 0) (list 'if (first xs) (if (> (count xs) 1) (nth xs 1) (throw \"odd number of forms to cond\")) (cons 'cond (rest (rest xs)))))))",
     ]
     |> list.try_map(fn(x) { rep(x, env) })
 
@@ -110,10 +111,11 @@ fn eval(ast: MalType, env: env.Env) -> MalRet {
 fn eval_list(first, rest, env) -> Result(MalType, types.Error) {
   case first {
     Symbol("def!") -> def_special(rest, env)
+    Symbol("defmacro!") -> defmacro_special(rest, env)
     Symbol("let*") -> let_special(rest, env)
+    Symbol("fn*") -> fn_special(rest, env)
     Symbol("if") -> if_special(rest, env)
     Symbol("do") -> do_special(rest, env)
-    Symbol("fn*") -> fn_special(rest, env)
     Symbol("quote") ->
       case rest {
         [a] -> Ok(a)
@@ -126,9 +128,16 @@ fn eval_list(first, rest, env) -> Result(MalType, types.Error) {
       }
     _ -> {
       use f <- result.try(eval(first, env))
-      use args <- result.try(list.try_map(rest, fn(x) { eval(x, env) }))
 
-      apply(f, args)
+      case f {
+        Func(f, is_macro: True, ..) ->
+          f(rest) |> result.try(fn(res) { eval(res, env) })
+        _ -> {
+          use args <- result.try(list.try_map(rest, fn(x) { eval(x, env) }))
+
+          apply(f, args)
+        }
+      }
     }
   }
 }
@@ -141,7 +150,25 @@ fn def_special(rest, env) {
       env.set(env, k, v)
       Ok(v)
     }
-    _ -> Error(types.EvalWrongArgLen(2, list.length(rest)))
+    _ -> types.wrong_type_err("symbol, any", rest)
+  }
+}
+
+fn defmacro_special(rest, env) {
+  case rest {
+    [key, f] -> {
+      use k <- result.try(env.try_key(key))
+      use f <- result.try(eval(f, env))
+      case f {
+        Func(fun, ..) -> {
+          let v = Func(fun, is_macro: True, meta: types.Nil)
+          env.set(env, k, v)
+          Ok(v)
+        }
+        _ -> types.wrong_type_err("symbol, func", rest)
+      }
+    }
+    _ -> types.wrong_type_err("symbol, func", rest)
   }
 }
 
@@ -167,6 +194,35 @@ fn let_special(rest, env) {
         }
         _ -> types.wrong_type_err("list | vector", [pairs])
       }
+    _ -> Error(types.EvalWrongArgLen(2, list.length(rest)))
+  }
+}
+
+fn fn_special(
+  rest: List(MalType),
+  env: env.Env,
+) -> Result(MalType, types.Error) {
+  case rest {
+    [List(params, _), body] | [Vector(params, _), body] -> {
+      use param_names <- result.try(
+        list.try_map(params, fn(x) {
+          case x {
+            Symbol(sym) -> Ok(sym)
+            _ -> Error(types.EvalFuncParamNotSymbol)
+          }
+        }),
+      )
+
+      let func = fn(args) {
+        let fn_env = env.into_outer(env)
+        use _ <- result.try(env.bind(fn_env, param_names, args))
+
+        eval(body, fn_env)
+      }
+
+      Ok(Func(func, False, types.Nil))
+    }
+    [_, _] as l -> types.wrong_type_err("list, any", l)
     _ -> Error(types.EvalWrongArgLen(2, list.length(rest)))
   }
 }
@@ -208,35 +264,6 @@ fn if_special(
       }
     }
     _ -> Error(types.EvalWrongArgLenRange(#(3, 4), list.length(rest)))
-  }
-}
-
-fn fn_special(
-  rest: List(MalType),
-  env: env.Env,
-) -> Result(MalType, types.Error) {
-  case rest {
-    [List(params, _), body] | [Vector(params, _), body] -> {
-      use param_names <- result.try(
-        list.try_map(params, fn(x) {
-          case x {
-            Symbol(sym) -> Ok(sym)
-            _ -> Error(types.EvalFuncParamNotSymbol)
-          }
-        }),
-      )
-
-      let closure = fn(args) {
-        let fn_env = env.into_outer(env)
-        use _ <- result.try(env.bind(fn_env, param_names, args))
-
-        eval(body, fn_env)
-      }
-
-      Ok(types.func(closure))
-    }
-    [_, _] as l -> types.wrong_type_err("list, any", l)
-    _ -> Error(types.EvalWrongArgLen(2, list.length(rest)))
   }
 }
 
