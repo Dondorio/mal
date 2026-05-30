@@ -1,13 +1,11 @@
-import gleam/dict
 import gleam/int
 import gleam/list
-import gleam/option.{None, Some}
 import gleam/regexp
 import gleam/result
 import gleam/string
 import types.{
-  type Error, type MalType, Bool, HashMap, Int, Keyword, List, ReaderEmpyForm,
-  ReaderEof, ReaderInvalidHashMap, String, Symbol, Vector,
+  type Error, type MalType, Bool, Int, Keyword, List, ReaderEmpyForm, ReaderEof,
+  ReaderInvalidHashMap, String, Symbol, Vector,
 }
 
 pub fn read_str(str: String) {
@@ -77,17 +75,6 @@ fn read_form(x: List(String)) {
   }
 }
 
-fn list_to_pairs(
-  l: List(MalType),
-  acc: List(#(MalType, MalType)),
-) -> option.Option(List(#(MalType, MalType))) {
-  case l {
-    [a, b, ..rest] -> list_to_pairs(rest, [#(a, b), ..acc])
-    [_] -> None
-    [] -> Some(acc)
-  }
-}
-
 fn read_seq(input: List(String), acc: List(MalType), closing: String) {
   case input {
     [] -> Error(ReaderEof(closing))
@@ -96,15 +83,9 @@ fn read_seq(input: List(String), acc: List(MalType), closing: String) {
         ")" -> Ok(#(List(acc, types.Nil), rest))
         "]" -> Ok(#(Vector(acc, types.Nil), rest))
         "}" -> {
-          let tuples = list_to_pairs(acc, [])
-
-          case tuples {
-            None -> Error(ReaderInvalidHashMap)
-            Some(t) -> {
-              let hm = dict.from_list(t)
-
-              Ok(#(HashMap(hm, types.Nil), rest))
-            }
+          case types.hashmap(acc) {
+            Ok(res) -> Ok(#(res, rest))
+            _ -> Error(ReaderInvalidHashMap)
           }
         }
         _ -> panic as "read_seq called with unknown closing symbol"

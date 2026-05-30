@@ -8,8 +8,7 @@ import types.{Bool, HashMap, Int, Keyword, List, Nil, String, Symbol, Vector}
 pub fn pr_err(err: types.Error) -> String {
   case err {
     types.ReaderEof(expected) -> "expected '" <> expected <> "', found EOF"
-    types.ReaderInvalidHashMap ->
-      "failed to construct hashmap: item count not divisible by 2"
+    types.ReaderInvalidHashMap -> "failed to construct hashmap"
     types.ReaderEmpyForm -> "read_form called with empty list"
 
     types.EvalWrongArgLen(expected, got) ->
@@ -32,6 +31,8 @@ pub fn pr_err(err: types.Error) -> String {
 
     types.EvalWrongType(expected, got) ->
       "expected '" <> expected <> "', got '" <> got <> "'"
+
+    types.Throw(exception) -> "thrown exception: " <> pr_str(exception, True)
 
     types.EvalDivideByZero -> "can't divide by zero"
     types.EvalApplyType(x) -> "can't apply '" <> pr_str(x, True) <> "'"

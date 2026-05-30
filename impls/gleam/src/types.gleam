@@ -1,5 +1,6 @@
-import gleam/dict
+import gleam/dict.{type Dict}
 import gleam/list
+import gleam/result
 import gleam/string
 import mut_cell.{type MutCell}
 
@@ -15,7 +16,7 @@ pub type MalType {
   Keyword(String)
   List(List(MalType), meta: MalType)
   Vector(List(MalType), meta: MalType)
-  HashMap(dict.Dict(MalType, MalType), meta: MalType)
+  HashMap(Dict(MalType, MalType), meta: MalType)
   Atom(MutCell(MalType))
 
   Func(fn(List(MalType)) -> MalRet, is_macro: Bool, meta: MalType)
@@ -25,6 +26,29 @@ pub fn func(f: fn(List(MalType)) -> MalRet) {
   Func(f, False, Nil)
 }
 
+fn list_to_pairs(
+  l: List(MalType),
+  acc: List(#(MalType, MalType)),
+) -> Result(List(#(MalType, MalType)), Error) {
+  case l {
+    [] -> Ok(acc)
+    [String(_) as a, b, ..rest] | [Keyword(_) as a, b, ..rest] ->
+      list_to_pairs(rest, [#(a, b), ..acc])
+    _ -> Error(StrErr("failed to get hashmap pairs"))
+  }
+}
+
+pub fn assoc(list) -> Result(Dict(_, _), Error) {
+  use pairs <- result.try(list_to_pairs(list, []))
+  // Reversed for (get { :a 1 :a 2 } :a) -> 2
+  Ok(dict.from_list(list.reverse(pairs)))
+}
+
+pub fn hashmap(list) -> MalRet {
+  assoc(list)
+  |> result.map(fn(res) { HashMap(res, Nil) })
+}
+
 pub fn eq(a: MalType, b: MalType) -> Bool {
   case a, b {
     List(l, _), Vector(v, _)
@@ -32,7 +56,23 @@ pub fn eq(a: MalType, b: MalType) -> Bool {
     | List(l, _), List(v, _)
     | Vector(l, _), Vector(v, _)
     -> seq_eq(l, v)
+    HashMap(a, _), HashMap(b, _) -> hm_eq(a, b)
     _, _ -> a == b
+  }
+}
+
+fn hm_eq(a: Dict(MalType, MalType), b: Dict(MalType, MalType)) -> Bool {
+  case dict.size(a) == dict.size(b) {
+    True -> {
+      list.all(dict.to_list(a), fn(pairs) {
+        let #(key, val) = pairs
+        case dict.get(b, key) {
+          Ok(val_b) -> eq(val, val_b)
+          _ -> False
+        }
+      })
+    }
+    False -> False
   }
 }
 
@@ -86,6 +126,8 @@ pub type Error {
   EvalFuncParamNotSymbol
 
   EnvToKey(ast: MalType)
+
+  Throw(MalType)
 
   /// Used for one off errors
   StrErr(String)
