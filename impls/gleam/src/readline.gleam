@@ -1,5 +1,6 @@
 import input.{input}
 
-pub fn readline(prn: String) {
+@external(javascript, "./readline_ffi.mjs", "readline_func")
+pub fn readline(prn: String) -> Result(String, Nil) {
   input(prn)
 }

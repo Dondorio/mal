@@ -12,7 +12,11 @@ step9_try \
 stepA_mal
 
 $(STEPS):
-	gleam build
+ifneq ($(filter $(GLEAM_TARGET), javascript js), )
+	npm install ../gleam
+endif
+	gleam build --no-print-progress
 
 clean:
 	gleam clean
+	rm -rf node_modules

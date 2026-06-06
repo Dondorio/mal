@@ -1,8 +1,29 @@
+@target(erlang)
 import gleam/erlang/process.{type Subject}
+@target(erlang)
 import gleam/otp/actor
 import gleam/result
 
-pub fn new(value: a) {
+@target(javascript)
+pub type MutCell(a)
+
+@target(erlang)
+pub type MutCell(a) =
+  actor.Started(process.Subject(Message(a)))
+
+@target(erlang)
+pub type Message(a) {
+  Get(Subject(a))
+  Set(a)
+  Update(fn(a) -> a)
+}
+
+@target(javascript)
+@external(javascript, "./mut_cell_ffi.mjs", "new_cell")
+pub fn new(value: a) -> MutCell(a)
+
+@target(erlang)
+pub fn new(value: a) -> MutCell(a) {
   let handle_message = fn(state: a, message: Message(a)) -> actor.Next(
     a,
     Message(a),
@@ -28,25 +49,30 @@ pub fn new(value: a) {
   actor
 }
 
-pub type Message(a) {
-  Get(Subject(a))
-  Set(a)
-  Update(fn(a) -> a)
-}
+@target(javascript)
+@external(javascript, "./mut_cell_ffi.mjs", "get")
+pub fn get(cell: MutCell(a)) -> a
 
-pub type MutCell(a) =
-  actor.Started(process.Subject(Message(a)))
-
-pub fn get(cell: MutCell(a)) {
+@target(erlang)
+pub fn get(cell: MutCell(a)) -> a {
   actor.call(cell.data, waiting: 10, sending: Get)
 }
 
-pub fn set(cell: MutCell(a), new: a) {
+@target(javascript)
+@external(javascript, "./mut_cell_ffi.mjs", "set")
+pub fn set(cell: MutCell(a), new: a) -> Nil
+
+@target(erlang)
+pub fn set(cell: MutCell(a), new: a) -> Nil {
   actor.send(cell.data, Set(new))
-  Nil
 }
 
-pub fn update(cell: MutCell(a), f: fn(a) -> a) {
+@target(javascript)
+@external(javascript, "./mut_cell_ffi.mjs", "update")
+pub fn update(cell: MutCell(a), f: fn(a) -> a) -> Nil
+
+@target(erlang)
+pub fn update(cell: MutCell(a), f: fn(a) -> a) -> Nil {
   actor.send(cell.data, Update(f))
 }
 

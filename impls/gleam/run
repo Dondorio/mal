@@ -1,3 +1,9 @@
 #!/usr/bin/env bash
+
+# Gleam does not let you have uppercase letters in module(file) names
+if [ "$STEP" == "stepA_mal" ]; then
+  STEP=stepa_mal
+fi
+
 cd $(dirname $0)
-exec gleam run --module ${STEP:-stepA_mal} --no-print-progress -- "${@}"
+exec gleam run --module ${STEP:-stepa_mal} --no-print-progress --target ${GLEAM_TARGET:-erlang} -- "${@}"

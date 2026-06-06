@@ -1,13 +1,16 @@
 import argv
 import gleam/dict
+import gleam/float
 import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
+import gleam/time/timestamp
 import mut_cell
 import printer
 import reader
+import readline
 import simplifile
 import types.{
   type Error, type MalType, Atom, Bool, Func, HashMap, Int, Keyword, List,
@@ -55,6 +58,42 @@ fn nth(list: List(a), n: Int) -> Option(a) {
   }
 }
 
+fn do_str(args, print_readability) {
+  let join = case print_readability {
+    True -> " "
+    False -> ""
+  }
+
+  Ok(
+    list.map(args, fn(x) { printer.pr_str(x, print_readability) })
+    |> string.join(join)
+    |> String,
+  )
+}
+
+fn str(args) {
+  do_str(args, False)
+}
+
+fn pr_str(args) {
+  do_str(args, True)
+}
+
+fn time_ms(args) {
+  case args {
+    [] -> {
+      let time =
+        timestamp.system_time()
+        |> timestamp.to_unix_seconds()
+
+      let int = float.truncate(time *. 1000.0)
+
+      Ok(Int(int))
+    }
+    _ -> types.wrong_type_err("", args)
+  }
+}
+
 pub fn ns() {
   [
     // Int
@@ -77,6 +116,13 @@ pub fn ns() {
       case args {
         [a, b, ..] -> bool(types.eq(a, b))
         _ -> bool(False)
+      }
+    }),
+    f("number?", fn(args) {
+      case args {
+        [Int(_)] -> bool(True)
+        [_] -> bool(False)
+        _ -> types.wrong_type_err("any", args)
       }
     }),
     f("list?", fn(args) {
@@ -110,6 +156,13 @@ pub fn ns() {
         _ -> bool(False)
       }
     }),
+    f("fn?", fn(args) {
+      case args {
+        [Func(is_macro: False, ..)] -> bool(True)
+        [_] -> bool(False)
+        _ -> types.wrong_type_err("any", args)
+      }
+    }),
     f("macro?", fn(args) {
       case args {
         [Func(is_macro: True, ..)] -> bool(True)
@@ -117,58 +170,59 @@ pub fn ns() {
         _ -> types.wrong_type_err("any", args)
       }
     }),
+    f("string?", fn(args) {
+      case args {
+        [String(_)] -> bool(True)
+        [_] -> bool(False)
+        _ -> types.wrong_type_err("any", args)
+      }
+    }),
     f("symbol?", fn(args) {
       case args {
         [Symbol(_)] -> bool(True)
-        _ -> bool(False)
+        [_] -> bool(False)
+        _ -> types.wrong_type_err("any", args)
       }
     }),
     f("nil?", fn(args) {
       case args {
         [types.Nil] -> bool(True)
-        _ -> bool(False)
+        [_] -> bool(False)
+        _ -> types.wrong_type_err("any", args)
       }
     }),
     f("true?", fn(args) {
       case args {
         [Bool(True)] -> bool(True)
-        _ -> bool(False)
+        [_] -> bool(False)
+        _ -> types.wrong_type_err("any", args)
       }
     }),
     f("false?", fn(args) {
       case args {
         [Bool(False)] -> bool(True)
-        _ -> bool(False)
+        [_] -> bool(False)
+        _ -> types.wrong_type_err("any", args)
       }
     }),
     f("keyword?", fn(args) {
       case args {
         [Keyword(_)] -> bool(True)
-        _ -> bool(False)
+        [_] -> bool(False)
+        _ -> types.wrong_type_err("any", args)
       }
     }),
     f("map?", fn(args) {
       case args {
         [HashMap(..)] -> bool(True)
-        _ -> bool(False)
+        [_] -> bool(False)
+        _ -> types.wrong_type_err("any", args)
       }
     }),
 
     // String
-    f("pr-str", fn(args) {
-      Ok(
-        list.map(args, fn(x) { printer.pr_str(x, True) })
-        |> string.join(" ")
-        |> String,
-      )
-    }),
-    f("str", fn(args) {
-      Ok(
-        list.map(args, fn(x) { printer.pr_str(x, False) })
-        |> string.join("")
-        |> String,
-      )
-    }),
+    f("pr-str", pr_str),
+    f("str", str),
 
     // Seq
     f("count", fn(args) {
@@ -192,6 +246,15 @@ pub fn ns() {
         }
       })
       |> result.map(fn(res) { List(res, types.Nil) })
+    }),
+    f("conj", fn(args) {
+      case args {
+        [List(data, _), ..rest] ->
+          Ok(List(list.append(list.reverse(rest), data), types.Nil))
+        [Vector(data, _), ..rest] ->
+          Ok(Vector(list.append(data, rest), types.Nil))
+        _ -> types.wrong_type_err("any, list | vector", args)
+      }
     }),
     f("first", fn(args) {
       case args {
@@ -222,6 +285,20 @@ pub fn ns() {
           list.try_map(data, fn(x) { f([x]) })
           |> result.map(fn(res) { List(res, types.Nil) })
         _ -> types.wrong_type_err("list | vector, func", args)
+      }
+    }),
+    f("seq", fn(args) {
+      case args {
+        [List([], _)] | [Vector([], _)] | [String("")] | [types.Nil] ->
+          Ok(types.Nil)
+        [List(l, _)] | [Vector(l, _)] -> Ok(List(l, types.Nil))
+        [String(str)] -> {
+          let chars =
+            string.to_graphemes(str) |> list.map(fn(char) { String(char) })
+
+          Ok(List(chars, types.Nil))
+        }
+        _ -> types.wrong_type_err("list | vector | string | nil", args)
       }
     }),
 
@@ -310,6 +387,17 @@ pub fn ns() {
         _ -> types.wrong_type_err("string", args)
       }
     }),
+    f("readline", fn(args) {
+      case args {
+        [String(str)] -> {
+          case readline.readline(str) {
+            Ok(input) -> Ok(String(input))
+            Error(_) -> Ok(types.Nil)
+          }
+        }
+        _ -> types.wrong_type_err("string", args)
+      }
+    }),
 
     // Declare
     f("list", fn(args) { Ok(List(args, types.Nil)) }),
@@ -364,6 +452,26 @@ pub fn ns() {
       }
     }),
 
+    // Meta
+    f("meta", fn(args) {
+      case args {
+        [List(meta:, ..)]
+        | [Vector(meta:, ..)]
+        | [HashMap(meta:, ..)]
+        | [Func(meta:, ..)] -> Ok(meta)
+        _ -> types.wrong_type_err("list | vector | hashmap | func", args)
+      }
+    }),
+    f("with-meta", fn(args) {
+      case args {
+        [List(..) as l, meta] -> Ok(List(..l, meta:))
+        [Vector(..) as l, meta] -> Ok(Vector(..l, meta:))
+        [HashMap(..) as l, meta] -> Ok(HashMap(..l, meta:))
+        [Func(..) as l, meta] -> Ok(Func(..l, meta: meta))
+        _ -> types.wrong_type_err("list | vector | hashmap | func", args)
+      }
+    }),
+
     // Other
     f("apply", fn(args) {
       case args {
@@ -393,6 +501,7 @@ pub fn ns() {
         _ -> types.wrong_type_err("any", args)
       }
     }),
+    f("time-ms", time_ms),
     #(
       "*ARGV*",
       List(
@@ -403,5 +512,6 @@ pub fn ns() {
         types.Nil,
       ),
     ),
+    #("*host-language*", String("gleam")),
   ]
 }
