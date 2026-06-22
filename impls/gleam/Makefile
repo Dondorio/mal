@@ -12,7 +12,7 @@ step9_try \
 stepA_mal
 
 $(STEPS):
-ifneq ($(filter $(GLEAM_TARGET), javascript js), )
+ifneq ($(filter $(gleam_MODE), javascript js), )
 	npm install ../gleam
 endif
 	gleam build --no-print-progress

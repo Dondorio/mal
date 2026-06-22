@@ -6,4 +6,4 @@ if [ "$STEP" == "stepA_mal" ]; then
 fi
 
 cd $(dirname $0)
-exec gleam run --module ${STEP:-stepa_mal} --no-print-progress --target ${GLEAM_TARGET:-erlang} -- "${@}"
+exec gleam run --module ${STEP:-stepa_mal} --no-print-progress --target ${gleam_MODE:-erlang} -- "${@}"

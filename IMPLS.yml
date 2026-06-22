@@ -30,6 +30,8 @@ IMPL:
   - {IMPL: fennel}
   - {IMPL: forth}
   - {IMPL: fsharp}
+  - {IMPL: gleam, gleam_MODE: erlang}
+  - {IMPL: gleam, gleam_MODE: js}
   - {IMPL: go}
   - {IMPL: groovy}
   - {IMPL: gnu-smalltalk}

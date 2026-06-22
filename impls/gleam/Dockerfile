@@ -20,4 +20,4 @@ WORKDIR /mal
 # Specific implementation requirements
 ##########################################################
 
-RUN apk add --no-cache gleam erlang28 rebar3
+RUN apk add --no-cache gleam erlang28 rebar3 nodejes
