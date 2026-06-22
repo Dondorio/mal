@@ -1,5 +1,6 @@
 FROM alpine:3.24.1
-MAINTAINER NAME <a@example.com>
+# I would rather not provide my real name
+MAINTAINER dondorio <dondadecahedron@gmail.com>
 LABEL org.opencontainers.image.source=https://github.com/kanaka/mal
 LABEL org.opencontainers.image.description="mal test container: gleam"
 
@@ -19,4 +20,4 @@ WORKDIR /mal
 # Specific implementation requirements
 ##########################################################
 
-RUN apk add --no-cache gleam erlang rebar3
+RUN apk add --no-cache gleam erlang28 rebar3
