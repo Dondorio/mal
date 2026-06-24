@@ -20,4 +20,8 @@ WORKDIR /mal
 # Specific implementation requirements
 ##########################################################
 
-RUN apk add --no-cache gleam erlang28 rebar3 nodejes
+RUN apk add --no-cache gleam erlang28 rebar3 nodejs npm
+RUN mkdir -p /.cache
+RUN chmod -R 777 /.cache
+RUN mkdir -p /.npm
+RUN chmod -R 777 /.npm

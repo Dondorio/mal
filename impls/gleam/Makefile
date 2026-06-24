@@ -13,7 +13,10 @@ stepA_mal
 
 $(STEPS):
 ifneq ($(filter $(gleam_MODE), javascript js), )
-	npm install ../gleam
+	echo "npm installing"
+	mkdir -p /.npm
+	ls -la /.npm
+	npm install
 endif
 	gleam build --no-print-progress
 
