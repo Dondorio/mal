@@ -31,7 +31,7 @@ IMPL:
   - {IMPL: forth}
   - {IMPL: fsharp}
   - {IMPL: gleam, gleam_MODE: erlang}
-  - {IMPL: gleam, gleam_MODE: js}
+  - {IMPL: gleam, gleam_MODE: js, NO_PERF: 1, NO_SELF_HOST_PERF: 1} # stack overflow
   - {IMPL: go}
   - {IMPL: groovy}
   - {IMPL: gnu-smalltalk}
