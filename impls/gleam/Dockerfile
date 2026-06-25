@@ -1,6 +1,6 @@
 FROM alpine:3.24.1
 # I would rather not provide my real name
-MAINTAINER dondorio <dondadecahedron@gmail.com>
+MAINTAINER Dondorio <dondadecahedron@gmail.com>
 LABEL org.opencontainers.image.source=https://github.com/kanaka/mal
 LABEL org.opencontainers.image.description="mal test container: gleam"
 

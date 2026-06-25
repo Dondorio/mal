@@ -25,7 +25,6 @@ fn f(name: String, fun) {
   #(name, func(fun))
 }
 
-// fn list_op()
 fn int_op(name, with: fn(Int, Int) -> Result(MalType, Error)) {
   #(
     name,

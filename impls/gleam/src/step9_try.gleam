@@ -179,7 +179,10 @@ fn let_special(rest, env) {
     [pairs, body] ->
       case pairs {
         List(l, _) | Vector(l, _) -> {
-          use pairs <- result.try(get_pairs(l, []))
+          use pairs <- result.try(
+            get_pairs(l, [])
+            |> result.replace_error(types.EvalLetPairOddCount(l)),
+          )
           let let_env = env.into_outer(env)
 
           use _ <- result.try(
@@ -196,7 +199,7 @@ fn let_special(rest, env) {
         }
         _ -> types.wrong_type_err("list | vector", [pairs])
       }
-    _ -> Error(types.EvalWrongArgLen(2, list.length(rest)))
+    _ -> types.wrong_type_err("list | vector, any", rest)
   }
 }
 
@@ -323,7 +326,7 @@ fn get_pairs(list, acc) {
       get_pairs(rest, [#(a, b), ..acc])
     }
     [] -> Ok(list.reverse(acc))
-    _ -> Error(types.StrErr("can't get bind pairs: count not divisible by 2"))
+    _ -> Error(Nil)
   }
 }
 

@@ -28,6 +28,12 @@ pub fn pr_err(err: types.Error) -> String {
       <> int.to_string(expected.1)
       <> " arguments, got "
       <> int.to_string(got)
+    types.EvalLetPairOddCount(got) ->
+      "can't bind let values: odd number of items "
+      <> "("
+      <> list.map(got, fn(x) { pr_str(x, True) })
+      |> string.join(" ")
+      <> ")"
 
     types.EvalWrongType(expected, got) ->
       "expected '" <> expected <> "', got '" <> got <> "'"

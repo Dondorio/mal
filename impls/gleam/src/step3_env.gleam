@@ -107,23 +107,17 @@ fn eval(ast: MalType, env: env.Env) -> MalRet {
             }
             _ -> Error(types.EvalWrongArgLen(2, list.length(rest)))
           }
-        Symbol("let*") -> {
+        Symbol("let*") ->
           case rest {
-            [pairs, closure] -> {
+            [pairs, body] ->
               case pairs {
                 List(l, _) | Vector(l, _) -> {
-                  let new_env = env.into_outer(env)
-                  use e <- result.try(let_special(l, [], new_env))
-
-                  use res <- result.try(eval(closure, e))
-                  Ok(res)
+                  let_special(l, body, env)
                 }
-                _ -> Error(types.EvalWrongType("list | vector", ""))
+                _ -> types.wrong_type_err("list | vector", [pairs])
               }
-            }
             _ -> Error(types.EvalWrongArgLen(2, list.length(rest)))
           }
-        }
 
         _ -> {
           use f <- result.try(eval(l, env))
@@ -164,20 +158,34 @@ fn eval(ast: MalType, env: env.Env) -> MalRet {
   }
 }
 
-fn let_special(pairs, acc, env) {
-  case pairs {
-    [key, val, ..rest] -> {
-      use res <- result.try(eval(val, env))
-      use k <- result.try(env.try_key(key))
-
-      env.set(env, k, res)
-
-      let_special(rest, [res, ..acc], env)
+fn get_pairs(list, acc) {
+  case list {
+    [a, b, ..rest] -> {
+      get_pairs(rest, [#(a, b), ..acc])
     }
-    [] -> Ok(env)
-    // TODO different err
-    _ -> Error(types.EvalWrongArgLen(2, list.length(pairs)))
+    [] -> Ok(list.reverse(acc))
+    _ -> Error(Nil)
   }
+}
+
+fn let_special(p, body, env) {
+  use pairs <- result.try(
+    get_pairs(p, [])
+    |> result.replace_error(types.EvalLetPairOddCount(p)),
+  )
+  let let_env = env.into_outer(env)
+
+  use _ <- result.try(
+    list.try_map(pairs, fn(x) {
+      use key <- result.try(env.try_key(x.0))
+      use val <- result.try(eval(x.1, let_env))
+      env.set(let_env, key, val)
+
+      Ok(Nil)
+    }),
+  )
+
+  eval(body, let_env)
 }
 
 fn read(str) {

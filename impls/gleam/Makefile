@@ -11,6 +11,8 @@ step8_macros \
 step9_try \
 stepA_mal
 
+gleam_MODE ?= erlang
+
 $(STEPS):
 ifneq ($(filter $(gleam_MODE), javascript js), )
 	npm install

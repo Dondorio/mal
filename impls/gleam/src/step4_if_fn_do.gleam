@@ -174,12 +174,15 @@ fn get_pairs(list, acc) {
       get_pairs(rest, [#(a, b), ..acc])
     }
     [] -> Ok(list.reverse(acc))
-    _ -> Error(types.StrErr("can't get bind pairs: count not divisible by 2"))
+    _ -> Error(Nil)
   }
 }
 
-fn let_special(pairs, body, env) {
-  use pairs <- result.try(get_pairs(pairs, []))
+fn let_special(p, body, env) {
+  use pairs <- result.try(
+    get_pairs(p, [])
+    |> result.replace_error(types.EvalLetPairOddCount(p)),
+  )
   let let_env = env.into_outer(env)
 
   use _ <- result.try(

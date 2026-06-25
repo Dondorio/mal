@@ -121,6 +121,7 @@ pub type Error {
   EvalWrongArgLenGreaterThan(expected: Int, got: Int)
   EvalWrongType(expected: String, got: String)
   EvalDivideByZero
+  EvalLetPairOddCount(got: List(MalType))
   EvalApplyType(got: MalType)
   EvalSymbolNotFound(symbol: String)
   EvalFuncParamNotSymbol
