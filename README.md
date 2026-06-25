@@ -73,6 +73,7 @@ FAQ](docs/FAQ.md) where I attempt to answer some common questions.
 | [Fantom](#fantom) | [Dov Murik](https://github.com/dubek) |
 | [Fennel](#fennel) | [sogaiu](https://github.com/sogaiu) |
 | [Forth](#forth) | [Chris Houser](https://github.com/chouser) |
+| [Gleam](#gleam) | [Dondorio](https://github.com/Dondorio)  |
 | [GNU Guile](#gnu-guile-21) | [Mu Lei](https://github.com/NalaGinrut) |
 | [GNU Smalltalk](#gnu-smalltalk) | [Vasilij Schneidermann](https://github.com/wasamasa) |
 | [Go](#go) | [Joel Martin](https://github.com/kanaka)  |
@@ -529,6 +530,15 @@ fennel ./stepX_YYY.fnl
 ```
 cd impls/forth
 gforth stepX_YYY.fs
+```
+
+### Gleam
+
+The Gleam implementation of mal has been tested with Gleam 1.17.0
+
+```
+cd impls/gleam
+./run
 ```
 
 ### GNU Guile 2.1+
